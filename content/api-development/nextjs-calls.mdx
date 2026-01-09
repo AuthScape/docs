@@ -15,52 +15,107 @@ Import from the authscape package:
 import { apiService } from 'authscape';
 ```
 
+## Response Structure
+
+All API responses return an Axios response object:
+
+- `response.status` - HTTP status code (200, 201, 400, etc.)
+- `response.data` - The actual data from the server
+
+Always check status and access data through `response.data`:
+
+```javascript
+let response = await apiService().get("/Users/GetAll");
+
+if (response != null && response.status == 200) {
+  const users = response.data;
+  setUsers(users);
+}
+```
+
 ## GET Requests
 
 ```javascript
 // Simple GET
-const users = await apiService().get('/Users/GetAllUsers');
+let response = await apiService().get('/Users/GetAllUsers');
+
+if (response != null && response.status == 200) {
+  const users = response.data;
+  setUsers(users);
+}
 
 // With query parameters
-const user = await apiService().get(`/Users/GetUser?id=${userId}`);
+let response = await apiService().get(`/Users/GetUser?id=${userId}`);
 
-// With complex query
-const filtered = await apiService().get('/Users/Search?query=john&role=admin');
+if (response != null && response.status == 200) {
+  const user = response.data;
+  setUser(user);
+}
+
+// Multiple query parameters
+let response = await apiService().get('/Users/Search?query=john&role=admin');
+
+if (response != null && response.status == 200) {
+  const results = response.data;
+  setSearchResults(results);
+}
 ```
 
 ## POST Requests
 
 ```javascript
 // Create resource
-const result = await apiService().post('/Users/Create', {
+let response = await apiService().post('/Users/Create', {
   email: 'user@example.com',
   firstName: 'John',
   lastName: 'Doe'
 });
 
-// With pagination
-const users = await apiService().post('/Users/GetAllUsers', {
+if (response != null && response.status == 200) {
+  const newUser = response.data;
+  notification("User created with ID: " + newUser.id);
+}
+
+// With pagination (server-side)
+let response = await apiService().post('/Users/GetAllUsers', {
   offset: 0,
   length: 25,
   sortBy: 'email',
   sortDirection: 'asc'
 });
+
+if (response != null && response.status == 200) {
+  setUsers(response.data.data);
+  setRowCount(response.data.recordsTotal);
+}
 ```
 
 ## PUT Requests
 
 ```javascript
-const updated = await apiService().put('/Users/Update', {
+let response = await apiService().put('/Users/Update', {
   id: userId,
   firstName: 'Jane',
   lastName: 'Smith'
 });
+
+if (response != null && response.status == 200) {
+  notification("User updated successfully");
+  // Optionally refresh data
+  await loadUsers();
+}
 ```
 
 ## DELETE Requests
 
 ```javascript
-await apiService().delete(`/Users/Delete?id=${userId}`);
+let response = await apiService().delete(`/Users/Delete?id=${userId}`);
+
+if (response != null && response.status == 200) {
+  notification("User deleted");
+  // Remove from local state
+  setUsers(prev => prev.filter(u => u.id !== userId));
+}
 ```
 
 ## File Upload
@@ -69,30 +124,17 @@ await apiService().delete(`/Users/Delete?id=${userId}`);
 const formData = new FormData();
 formData.append('file', file);
 
-const result = await apiService().post('/Files/Upload', formData, {
+let response = await apiService().post('/Files/Upload', formData, {
   headers: { 'Content-Type': 'multipart/form-data' }
 });
-```
 
-## Error Handling
-
-```javascript
-try {
-  const data = await apiService().get('/api/endpoint');
-} catch (error) {
-  if (error.response?.status === 401) {
-    // Unauthorized - redirect to login
-    authService().login();
-  } else if (error.response?.status === 403) {
-    // Forbidden - show access denied
-    console.error('Access denied');
-  } else {
-    console.error('API error:', error.message);
-  }
+if (response != null && response.status == 200) {
+  const uploadedFile = response.data;
+  console.log("File URL:", uploadedFile.uri);
 }
 ```
 
-## With Loading State
+## Complete Component Example
 
 ```javascript
 import { useState, useEffect } from 'react';
@@ -104,18 +146,34 @@ function UserList() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    async function loadUsers() {
-      try {
-        const data = await apiService().get('/Users/GetAllUsers');
-        setUsers(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadUsers();
   }, []);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      let response = await apiService().get('/Users/GetAllUsers');
+
+      if (response != null && response.status == 200) {
+        setUsers(response.data);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteUser = async (userId) => {
+    let response = await apiService().delete(`/Users/Delete?id=${userId}`);
+
+    if (response != null && response.status == 200) {
+      // Remove from local state
+      setUsers(prev => prev.filter(u => u.id !== userId));
+    }
+  };
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -123,33 +181,117 @@ function UserList() {
   return (
     <ul>
       {users.map(user => (
-        <li key={user.id}>{user.email}</li>
+        <li key={user.id}>
+          {user.email}
+          <button onClick={() => deleteUser(user.id)}>Delete</button>
+        </li>
       ))}
     </ul>
   );
 }
 ```
 
+## DataGrid with Server-Side Pagination
+
+```javascript
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import { DataGrid } from '@mui/x-data-grid';
+
+function UserDataGrid() {
+  const [users, setUsers] = useState([]);
+  const [rowCount, setRowCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 25
+  });
+
+  useEffect(() => {
+    loadUsers();
+  }, [paginationModel]);
+
+  const loadUsers = async () => {
+    setLoading(true);
+
+    let response = await apiService().post('/Users/GetAllUsers', {
+      offset: paginationModel.page * paginationModel.pageSize,
+      length: paginationModel.pageSize
+    });
+
+    if (response != null && response.status == 200) {
+      setUsers(response.data.data);
+      setRowCount(response.data.recordsTotal);
+    }
+
+    setLoading(false);
+  };
+
+  const columns = [
+    { field: 'id', headerName: 'ID', width: 90 },
+    { field: 'email', headerName: 'Email', width: 250 },
+    { field: 'firstName', headerName: 'First Name', width: 150 },
+    { field: 'lastName', headerName: 'Last Name', width: 150 }
+  ];
+
+  return (
+    <DataGrid
+      rows={users}
+      columns={columns}
+      rowCount={rowCount}
+      loading={loading}
+      paginationModel={paginationModel}
+      onPaginationModelChange={setPaginationModel}
+      paginationMode="server"
+      pageSizeOptions={[10, 25, 50, 100]}
+    />
+  );
+}
+```
+
+## Error Handling
+
+```javascript
+import { apiService, authService } from 'authscape';
+
+const loadData = async () => {
+  try {
+    let response = await apiService().get('/api/endpoint');
+
+    if (response != null && response.status == 200) {
+      return response.data;
+    }
+  } catch (error) {
+    if (error.response?.status === 401) {
+      // Unauthorized - redirect to login
+      authService().login();
+    } else if (error.response?.status === 403) {
+      // Forbidden - show access denied
+      notification('Access denied');
+    } else {
+      notification('Error: ' + error.message);
+    }
+  }
+};
+```
+
 ## Custom Headers
 
 ```javascript
-const response = await apiService().get('/api/endpoint', {
+let response = await apiService().get('/api/endpoint', {
   headers: {
     'X-Custom-Header': 'value',
     'Accept-Language': 'en-US'
   }
 });
-```
 
-## Timeout Configuration
-
-```javascript
-const response = await apiService().get('/api/slow-endpoint', {
-  timeout: 30000  // 30 seconds
-});
+if (response != null && response.status == 200) {
+  const data = response.data;
+}
 ```
 
 ## Next Steps
 
 - [Protecting Endpoints](/docs/api-development/protect-endpoints)
 - [User Information](/docs/api-development/user-info)
+- [SignedInUser Object](/docs/api-development/signed-in-user)
