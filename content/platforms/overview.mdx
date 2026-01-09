@@ -1,0 +1,68 @@
+---
+title: Platforms Overview
+description: AuthScape supports multiple platforms including .NET Console, React/Next.js, and Unity for desktop and mobile.
+---
+
+# Platforms Overview
+
+AuthScape is designed to work seamlessly across multiple platforms, enabling you to build applications for web, desktop, and mobile using a unified authentication and API infrastructure.
+
+## Supported Platforms
+
+| Platform | Use Case | Features |
+|----------|----------|----------|
+| [.NET Console](/docs/platforms/dotnet-console) | Background services, CLI tools | Direct API access, service authentication |
+| [React (Next.js)](/docs/platforms/react-nextjs) | Web applications, PWAs | Full auth flow, SSR support, offline capabilities |
+| [Unity](/docs/platforms/unity) | Games, Desktop/Mobile apps | Cross-platform, iOS, Android, Windows |
+
+## Platform Architecture
+
+All platforms connect to the same AuthScape backend:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AuthScape Backend                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Auth API  │  │  REST APIs  │  │  OpenIddict Server  │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+         │                  │                    │
+    ┌────┴────┐       ┌────┴────┐         ┌─────┴─────┐
+    │  .NET   │       │ Next.js │         │   Unity   │
+    │ Console │       │   App   │         │   Game    │
+    └─────────┘       └─────────┘         └───────────┘
+```
+
+## Choosing a Platform
+
+### .NET Console App
+
+Best for:
+- Background processing services
+- Scheduled tasks and jobs
+- CLI tools and utilities
+- Server-to-server communication
+
+### React (Next.js)
+
+Best for:
+- Customer-facing web applications
+- Admin dashboards
+- Progressive Web Apps (PWA)
+- SEO-optimized content sites
+
+### Unity
+
+Best for:
+- Games with user accounts
+- Desktop applications (Windows, Mac, Linux)
+- Mobile apps (iOS, Android)
+- AR/VR experiences
+
+## Getting Started
+
+Each platform has its own setup guide. Choose your platform to get started:
+
+1. [.NET Console App](/docs/platforms/dotnet-console) - Quick setup for background services
+2. [React (Next.js)](/docs/platforms/react-nextjs) - Full-featured web application template
+3. [Unity](/docs/platforms/unity) - Game and mobile app development

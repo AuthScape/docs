@@ -1,0 +1,75 @@
+---
+title: Shared Config
+description: Share configuration across multiple AuthScape projects.
+---
+
+# Shared Configuration
+
+AuthScape supports shared configuration files for settings that need to be consistent across multiple projects.
+
+## Overview
+
+Shared configuration allows you to:
+- Maintain common settings in one place
+- Override settings per environment
+- Keep sensitive data separate from code
+
+## Shared appsettings.json
+
+Create a shared configuration file:
+
+```json
+{
+  "AppSettings": {
+    "ApplicationName": "AuthScape",
+    "DefaultCulture": "en-US",
+    "SupportedCultures": ["en-US", "es-ES", "fr-FR"]
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning"
+    }
+  }
+}
+```
+
+## Loading Shared Config
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Load shared configuration first
+builder.Configuration
+    .AddJsonFile("appsettings.shared.json", optional: true)
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true);
+```
+
+## Configuration Priority
+
+Later configurations override earlier ones:
+
+1. `appsettings.shared.json` (lowest priority)
+2. `appsettings.json`
+3. `appsettings.[Environment].json`
+4. Environment variables
+5. User secrets (highest priority in development)
+
+## Example Structure
+
+```
+/shared
+  appsettings.shared.json
+/AuthScape.API
+  appsettings.json
+  appsettings.Development.json
+  appsettings.Production.json
+/AuthScape.Worker
+  appsettings.json
+```
+
+## Next Steps
+
+- [Environment Configs](/docs/configuration/environment)
+- [Priority Order](/docs/configuration/priority-order)

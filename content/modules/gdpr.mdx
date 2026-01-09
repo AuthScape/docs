@@ -1,0 +1,126 @@
+---
+title: GDPR
+description: GDPR compliance tools for data management, consent, and user rights.
+---
+
+# GDPR
+
+The GDPR module provides tools for GDPR compliance including consent management, data export, and right to be forgotten.
+
+## Features
+
+- Cookie consent management
+- Data export (right to access)
+- Account deletion (right to be forgotten)
+- Consent tracking
+- Privacy policy acceptance
+- Data processing agreements
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/GDPR/ExportData` | GET | Export user's data |
+| `/api/GDPR/DeleteAccount` | POST | Request account deletion |
+| `/api/GDPR/Consents` | GET | Get user's consents |
+| `/api/GDPR/RecordConsent` | POST | Record consent |
+
+## Usage
+
+### Export User Data
+
+```javascript
+import { apiService } from 'authscape';
+
+const data = await apiService().get('/api/GDPR/ExportData');
+// Downloads JSON file with all user data
+
+const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+const url = window.URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'my-data.json';
+a.click();
+```
+
+### Request Account Deletion
+
+```javascript
+await apiService().post('/api/GDPR/DeleteAccount', {
+  reason: 'No longer using the service',
+  confirmEmail: 'user@example.com'
+});
+```
+
+### Record Consent
+
+```javascript
+await apiService().post('/api/GDPR/RecordConsent', {
+  type: 'marketing_emails',
+  granted: true,
+  source: 'signup_form'
+});
+```
+
+## Cookie Consent Component
+
+```jsx
+import { useState, useEffect } from 'react';
+import { Button, Dialog, DialogContent, DialogActions, FormControlLabel, Checkbox } from '@mui/material';
+
+export default function CookieConsent() {
+  const [open, setOpen] = useState(false);
+  const [consents, setConsents] = useState({
+    necessary: true,
+    analytics: false,
+    marketing: false
+  });
+
+  useEffect(() => {
+    const saved = localStorage.getItem('cookieConsent');
+    if (!saved) setOpen(true);
+  }, []);
+
+  function handleSave() {
+    localStorage.setItem('cookieConsent', JSON.stringify(consents));
+    setOpen(false);
+    // Initialize analytics if consented
+    if (consents.analytics) initAnalytics();
+  }
+
+  return (
+    <Dialog open={open}>
+      <DialogContent>
+        <FormControlLabel
+          control={<Checkbox checked disabled />}
+          label="Necessary (required)"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={consents.analytics}
+              onChange={(e) => setConsents({ ...consents, analytics: e.target.checked })}
+            />
+          }
+          label="Analytics cookies"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={consents.marketing}
+              onChange={(e) => setConsents({ ...consents, marketing: e.target.checked })}
+            />
+          }
+          label="Marketing cookies"
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => { setConsents({ necessary: true, analytics: true, marketing: true }); handleSave(); }}>
+          Accept All
+        </Button>
+        <Button onClick={handleSave}>Save Preferences</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```

@@ -1,0 +1,168 @@
+---
+title: Modules Overview
+description: Explore AuthScape's comprehensive set of 22+ modules for building full-featured applications.
+---
+
+# Modules Overview
+
+AuthScape includes over 22 modules that provide ready-to-use functionality for common application requirements. Each module is designed to work independently or together with other modules.
+
+## Available Modules
+
+### Core Modules
+
+| Module | Description |
+|--------|-------------|
+| [AuthScape App](/docs/modules/authscape-app) | Core application bootstrap and configuration |
+| [Account Management](/docs/modules/account-management) | User profile and account settings |
+| [Audit Logging](/docs/modules/audit-logging) | Track all system changes and user actions |
+| [Identity Server](/docs/modules/identity-server) | OAuth2/OpenID Connect applications, scopes, and tokens |
+
+### Analytics & Tracking
+
+| Module | Description |
+|--------|-------------|
+| [Analytics](/docs/modules/analytics) | Google Analytics, Microsoft Clarity, database tracking |
+
+### Content & Documents
+
+| Module | Description |
+|--------|-------------|
+| [Blogging](/docs/modules/blogging) | Full-featured blog with categories and tags |
+| [Document Management](/docs/modules/document-management) | File storage, versioning, and permissions |
+| [Document Mapping](/docs/modules/document-mapping) | Map document fields to data models |
+| [Document Service](/docs/modules/document-service) | Automapping, history, and document processing |
+| [Forms](/docs/modules/forms) | Dynamic form builder and submissions |
+
+### Communication
+
+| Module | Description |
+|--------|-------------|
+| [Ticketing](/docs/modules/ticketing) | Customer support ticket system with Stripe integration |
+| [Chat System](/docs/modules/chat) | Real-time messaging between users |
+| [Push Notifications](/docs/modules/push-notifications) | Mobile and web push notifications |
+
+### Payments & Billing
+
+| Module | Description |
+|--------|-------------|
+| [Payment Processing](/docs/modules/payment-processing) | Stripe integration with ACH and card storage |
+| [Invoices](/docs/modules/invoices) | Create and manage invoices with payment tracking |
+
+### Multi-Tenant & Whitelabel
+
+| Module | Description |
+|--------|-------------|
+| [OEM / Whitelabel](/docs/modules/whitelabel) | Multi-domain hosting, DNS wizard, custom branding |
+| [Multi-language](/docs/modules/multi-language) | Internationalization and localization support |
+
+### Compliance & Security
+
+| Module | Description |
+|--------|-------------|
+| [GDPR](/docs/modules/gdpr) | GDPR compliance tools and data management |
+
+### AI & Automation
+
+| Module | Description |
+|--------|-------------|
+| [Generate Service (AI)](/docs/modules/generate-service) | AI-powered content generation tools |
+| [Image Service](/docs/modules/image-service) | Image upscaling, background removal, compression |
+
+### Organization
+
+| Module | Description |
+|--------|-------------|
+| [Reporting](/docs/modules/reporting) | Dynamic report generation and scheduling |
+| [Kanban](/docs/modules/kanban) | Kanban boards with drag-and-drop |
+
+## Module Architecture
+
+Each module follows a consistent structure:
+
+```
+Plugins/
+├── AuthScape.ModuleName/
+│   ├── Controllers/
+│   │   └── ModuleController.cs
+│   ├── Services/
+│   │   ├── IModuleService.cs
+│   │   └── ModuleService.cs
+│   ├── Models/
+│   │   └── ModuleModels.cs
+│   └── AuthScape.ModuleName.csproj
+```
+
+## Using Modules
+
+### 1. Add Project Reference
+
+```xml
+<ProjectReference Include="..\Plugins\AuthScape.ModuleName\AuthScape.ModuleName.csproj" />
+```
+
+### 2. Register Services (if required)
+
+Most modules auto-register. Some may need explicit registration:
+
+```csharp
+services.AddModuleName(Configuration);
+```
+
+### 3. Configure Settings
+
+```json
+{
+  "AppSettings": {
+    "ModuleName": {
+      "Setting1": "value",
+      "Setting2": true
+    }
+  }
+}
+```
+
+### 4. Use in Your Code
+
+```csharp
+public class MyController : ControllerBase
+{
+    private readonly IModuleService _moduleService;
+
+    public MyController(IModuleService moduleService)
+    {
+        _moduleService = moduleService;
+    }
+}
+```
+
+## Module Dependencies
+
+Some modules depend on others:
+
+```
+┌─────────────────┐
+│  AuthScape App  │ ◄── Required by all
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+┌────────┐ ┌────────────┐
+│ Stripe │ │  SendGrid  │
+└────┬───┘ └──────┬─────┘
+     │            │
+     ▼            ▼
+┌─────────┐  ┌──────────┐
+│ Invoices│  │ Ticketing│
+└─────────┘  └──────────┘
+```
+
+## Getting Started
+
+1. Review the modules list above
+2. Choose modules for your use case
+3. Add project references
+4. Configure settings
+5. Use the module APIs
+
+Most modules work out of the box with minimal configuration.

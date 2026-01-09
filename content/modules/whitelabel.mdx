@@ -1,0 +1,356 @@
+---
+title: OEM / Whitelabel
+description: Multi-domain hosting with custom branding, DNS wizard, and Google Fonts integration.
+---
+
+# OEM / Whitelabel
+
+The Whitelabel module enables multi-tenant deployments with custom branding per tenant, including custom domains, colors, fonts, CSS, and header imports.
+
+## Features
+
+- Multi-domain hosting on single Azure Web App
+- Custom CSS per tenant
+- Header imports (scripts, stylesheets)
+- Custom color schemes
+- Google Fonts integration
+- Auto DNS Wizard Manager
+- Logo and favicon customization
+- Email template customization
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    Azure Web App                                │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ tenant1.com  │  │ tenant2.com  │  │  tenant3.yourapp.com │  │
+│  │              │  │              │  │                      │  │
+│  │  - Blue      │  │  - Green     │  │  - Purple theme      │  │
+│  │  - Logo A    │  │  - Logo B    │  │  - Custom fonts      │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│                          │                                      │
+│                    ┌─────┴─────┐                                │
+│                    │ AuthScape │                                │
+│                    │   Core    │                                │
+│                    └───────────┘                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+## Configuration
+
+### Company Branding Model
+
+```csharp
+public class CompanyBranding
+{
+    public long CompanyId { get; set; }
+    public string CustomDomain { get; set; }
+    public string LogoUrl { get; set; }
+    public string FaviconUrl { get; set; }
+    public string PrimaryColor { get; set; }
+    public string SecondaryColor { get; set; }
+    public string FontFamily { get; set; }
+    public string CustomCss { get; set; }
+    public string HeaderImports { get; set; }  // JSON array
+    public string EmailLogoUrl { get; set; }
+    public string EmailFooterHtml { get; set; }
+}
+```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Whitelabel/GetBranding` | GET | Get current tenant branding |
+| `/api/Whitelabel/UpdateBranding` | PUT | Update branding settings |
+| `/api/Whitelabel/VerifyDomain` | POST | Verify custom domain |
+| `/api/Whitelabel/GetDnsRecords` | GET | Get required DNS records |
+
+## Usage
+
+### Get Tenant Branding
+
+```javascript
+import { apiService } from 'authscape';
+
+// Branding is determined by the current domain
+const branding = await apiService().get('/api/Whitelabel/GetBranding');
+// {
+//   companyName: 'Acme Corp',
+//   logoUrl: 'https://...',
+//   primaryColor: '#3B82F6',
+//   secondaryColor: '#10B981',
+//   fontFamily: 'Roboto',
+//   customCss: '...',
+//   headerImports: [
+//     { type: 'stylesheet', url: 'https://...' },
+//     { type: 'script', url: 'https://...' }
+//   ]
+// }
+```
+
+### Update Branding
+
+```javascript
+await apiService().put('/api/Whitelabel/UpdateBranding', {
+  primaryColor: '#3B82F6',
+  secondaryColor: '#10B981',
+  fontFamily: 'Poppins',
+  customCss: `
+    .header { background: linear-gradient(135deg, #3B82F6, #10B981); }
+    .btn-primary { border-radius: 9999px; }
+  `,
+  headerImports: [
+    {
+      type: 'stylesheet',
+      url: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap'
+    }
+  ]
+});
+```
+
+## DNS Wizard
+
+### Get Required DNS Records
+
+```javascript
+const dnsRecords = await apiService().get('/api/Whitelabel/GetDnsRecords?domain=app.clientdomain.com');
+// {
+//   records: [
+//     { type: 'CNAME', name: 'app', value: 'yourapp.azurewebsites.net' },
+//     { type: 'TXT', name: 'asuid.app', value: 'verification-token-here' }
+//   ],
+//   status: 'pending_verification'
+// }
+```
+
+### Verify Domain
+
+```javascript
+const result = await apiService().post('/api/Whitelabel/VerifyDomain', {
+  domain: 'app.clientdomain.com'
+});
+// { success: true, sslStatus: 'provisioning' }
+```
+
+## Apply Branding in Next.js
+
+### ThemeProvider with Whitelabel
+
+```jsx
+import { createContext, useContext, useState, useEffect } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material';
+import { apiService } from 'authscape';
+
+const BrandingContext = createContext();
+
+export function WhitelabelProvider({ children }) {
+  const [branding, setBranding] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadBranding();
+  }, []);
+
+  async function loadBranding() {
+    try {
+      const data = await apiService().get('/api/Whitelabel/GetBranding');
+      setBranding(data);
+    } catch (error) {
+      // Use defaults if branding fails to load
+      setBranding({ primaryColor: '#3B82F6', secondaryColor: '#10B981' });
+    }
+    setLoading(false);
+  }
+
+  const theme = createTheme({
+    palette: {
+      primary: { main: branding?.primaryColor || '#3B82F6' },
+      secondary: { main: branding?.secondaryColor || '#10B981' }
+    },
+    typography: {
+      fontFamily: branding?.fontFamily || 'Inter, sans-serif'
+    }
+  });
+
+  if (loading) return null;
+
+  return (
+    <BrandingContext.Provider value={branding}>
+      <ThemeProvider theme={theme}>
+        {/* Inject custom CSS */}
+        {branding?.customCss && (
+          <style dangerouslySetInnerHTML={{ __html: branding.customCss }} />
+        )}
+        {/* Inject header imports */}
+        {branding?.headerImports?.map((imp, i) => (
+          imp.type === 'stylesheet'
+            ? <link key={i} rel="stylesheet" href={imp.url} />
+            : <script key={i} src={imp.url} />
+        ))}
+        {children}
+      </ThemeProvider>
+    </BrandingContext.Provider>
+  );
+}
+
+export function useBranding() {
+  return useContext(BrandingContext);
+}
+```
+
+### Header Component
+
+```jsx
+import { useBranding } from './WhitelabelProvider';
+import Image from 'next/image';
+
+export default function Header() {
+  const branding = useBranding();
+
+  return (
+    <header>
+      {branding?.logoUrl ? (
+        <Image src={branding.logoUrl} alt="Logo" width={150} height={40} />
+      ) : (
+        <span>Your App</span>
+      )}
+    </header>
+  );
+}
+```
+
+## Google Fonts Integration
+
+```jsx
+// Get available Google Fonts
+const fonts = [
+  'Roboto',
+  'Open Sans',
+  'Lato',
+  'Montserrat',
+  'Poppins',
+  'Inter',
+  'Nunito',
+  'Raleway'
+];
+
+// Font picker component
+function FontPicker({ value, onChange }) {
+  return (
+    <Select value={value} onChange={(e) => onChange(e.target.value)}>
+      {fonts.map(font => (
+        <MenuItem key={font} value={font} style={{ fontFamily: font }}>
+          {font}
+        </MenuItem>
+      ))}
+    </Select>
+  );
+}
+```
+
+## Backend Implementation
+
+### WhitelabelMiddleware
+
+```csharp
+public class WhitelabelMiddleware
+{
+    private readonly RequestDelegate _next;
+
+    public async Task InvokeAsync(HttpContext context, DatabaseContext db)
+    {
+        var host = context.Request.Host.Host;
+
+        // Find company by domain
+        var branding = await db.CompanyBrandings
+            .FirstOrDefaultAsync(b => b.CustomDomain == host);
+
+        if (branding != null)
+        {
+            // Store in HttpContext for access throughout request
+            context.Items["CompanyId"] = branding.CompanyId;
+            context.Items["Branding"] = branding;
+        }
+
+        await _next(context);
+    }
+}
+```
+
+### Register Middleware
+
+```csharp
+app.UseMiddleware<WhitelabelMiddleware>();
+```
+
+## Admin Dashboard
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import { TextField, Button, Box, Typography } from '@mui/material';
+import { ChromePicker } from 'react-color';
+
+export default function BrandingAdmin() {
+  const [branding, setBranding] = useState({});
+
+  useEffect(() => {
+    loadBranding();
+  }, []);
+
+  async function loadBranding() {
+    const data = await apiService().get('/api/Whitelabel/GetBranding');
+    setBranding(data);
+  }
+
+  async function saveBranding() {
+    await apiService().put('/api/Whitelabel/UpdateBranding', branding);
+    alert('Branding saved!');
+  }
+
+  return (
+    <Box sx={{ maxWidth: 600, mx: 'auto', p: 3 }}>
+      <Typography variant="h5" gutterBottom>Branding Settings</Typography>
+
+      <TextField
+        fullWidth
+        label="Logo URL"
+        value={branding.logoUrl || ''}
+        onChange={(e) => setBranding({ ...branding, logoUrl: e.target.value })}
+        sx={{ mb: 2 }}
+      />
+
+      <Typography>Primary Color</Typography>
+      <ChromePicker
+        color={branding.primaryColor || '#3B82F6'}
+        onChange={(color) => setBranding({ ...branding, primaryColor: color.hex })}
+      />
+
+      <TextField
+        fullWidth
+        label="Custom CSS"
+        multiline
+        rows={6}
+        value={branding.customCss || ''}
+        onChange={(e) => setBranding({ ...branding, customCss: e.target.value })}
+        sx={{ mt: 2, mb: 2 }}
+      />
+
+      <Button variant="contained" onClick={saveBranding}>
+        Save Branding
+      </Button>
+    </Box>
+  );
+}
+```
+
+## Best Practices
+
+1. **Cache branding** - Branding rarely changes, cache aggressively
+2. **Validate CSS** - Sanitize custom CSS to prevent XSS
+3. **SSL automation** - Use Azure managed certificates for custom domains
+4. **Test all tenants** - Verify branding looks correct on all domains
+5. **Provide defaults** - Always have fallback branding values

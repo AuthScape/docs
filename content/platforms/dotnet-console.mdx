@@ -1,0 +1,203 @@
+---
+title: .NET Console App
+description: Build background services and CLI tools with AuthScape using .NET Console applications.
+---
+
+# .NET Console App
+
+Use .NET Console applications for background services, scheduled tasks, and server-to-server communication with AuthScape APIs.
+
+## Use Cases
+
+- **Background Processing** - Long-running jobs that process data
+- **Scheduled Tasks** - Cron jobs and timed operations
+- **CLI Tools** - Command-line utilities for administrators
+- **Service Integration** - Connect external services to AuthScape
+
+## Project Setup
+
+### 1. Create Console Project
+
+```bash
+dotnet new console -n MyBackgroundService
+cd MyBackgroundService
+```
+
+### 2. Add AuthScape References
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\AuthScape.Core\Services\Services.csproj" />
+  <ProjectReference Include="..\AuthScape.Core\Services.Database\Services.Database.csproj" />
+</ItemGroup>
+```
+
+### 3. Add NuGet Packages
+
+```bash
+dotnet add package Microsoft.Extensions.Hosting
+dotnet add package Microsoft.Extensions.Http
+```
+
+## Authentication
+
+### Client Credentials Flow
+
+For server-to-server authentication, use the Client Credentials flow:
+
+```csharp
+using System.Net.Http.Json;
+
+public class AuthScapeClient
+{
+    private readonly HttpClient _httpClient;
+    private readonly string _clientId;
+    private readonly string _clientSecret;
+    private readonly string _tokenEndpoint;
+
+    public AuthScapeClient(string baseUrl, string clientId, string clientSecret)
+    {
+        _httpClient = new HttpClient();
+        _clientId = clientId;
+        _clientSecret = clientSecret;
+        _tokenEndpoint = $"{baseUrl}/connect/token";
+    }
+
+    public async Task<string> GetAccessTokenAsync()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, _tokenEndpoint);
+        request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = _clientId,
+            ["client_secret"] = _clientSecret,
+            ["scope"] = "api"
+        });
+
+        var response = await _httpClient.SendAsync(request);
+        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
+        return token.AccessToken;
+    }
+}
+
+public class TokenResponse
+{
+    public string AccessToken { get; set; }
+    public int ExpiresIn { get; set; }
+}
+```
+
+## Making API Calls
+
+### Basic GET Request
+
+```csharp
+public async Task<List<User>> GetUsersAsync()
+{
+    var token = await GetAccessTokenAsync();
+
+    _httpClient.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", token);
+
+    var response = await _httpClient.GetAsync("/api/Users/GetAll");
+    return await response.Content.ReadFromJsonAsync<List<User>>();
+}
+```
+
+### POST Request with Data
+
+```csharp
+public async Task<User> CreateUserAsync(CreateUserRequest request)
+{
+    var token = await GetAccessTokenAsync();
+
+    _httpClient.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", token);
+
+    var response = await _httpClient.PostAsJsonAsync("/api/Users/Create", request);
+    return await response.Content.ReadFromJsonAsync<User>();
+}
+```
+
+## Background Service Pattern
+
+Use `IHostedService` for long-running background tasks:
+
+```csharp
+public class DataSyncService : BackgroundService
+{
+    private readonly ILogger<DataSyncService> _logger;
+    private readonly AuthScapeClient _client;
+
+    public DataSyncService(ILogger<DataSyncService> logger, AuthScapeClient client)
+    {
+        _logger = logger;
+        _client = client;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                _logger.LogInformation("Starting data sync...");
+                await SyncDataAsync();
+                _logger.LogInformation("Data sync completed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during data sync");
+            }
+
+            await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken);
+        }
+    }
+
+    private async Task SyncDataAsync()
+    {
+        var users = await _client.GetUsersAsync();
+        // Process users...
+    }
+}
+```
+
+### Register Services
+
+```csharp
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddSingleton<AuthScapeClient>(sp =>
+    new AuthScapeClient(
+        builder.Configuration["AuthScape:BaseUrl"],
+        builder.Configuration["AuthScape:ClientId"],
+        builder.Configuration["AuthScape:ClientSecret"]
+    ));
+
+builder.Services.AddHostedService<DataSyncService>();
+
+var host = builder.Build();
+await host.RunAsync();
+```
+
+## Configuration
+
+### appsettings.json
+
+```json
+{
+  "AuthScape": {
+    "BaseUrl": "https://api.yourapp.com",
+    "ClientId": "background-service",
+    "ClientSecret": "your-client-secret"
+  }
+}
+```
+
+## Best Practices
+
+1. **Token Caching** - Cache access tokens and refresh before expiry
+2. **Retry Logic** - Implement exponential backoff for API failures
+3. **Logging** - Use structured logging for debugging
+4. **Health Checks** - Implement health endpoints for monitoring
+5. **Graceful Shutdown** - Handle cancellation tokens properly

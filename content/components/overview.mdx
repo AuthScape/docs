@@ -1,0 +1,46 @@
+---
+title: Components Overview
+description: Reusable React components for building AuthScape applications.
+---
+
+# Components Overview
+
+AuthScape provides a set of reusable React components for common functionality like image handling, file uploads, API calls, and form inputs.
+
+## Available Components
+
+| Component | Description |
+|-----------|-------------|
+| [NextImage](/docs/components/nextimage) | Image component with fallback support |
+| [GoogleMapsAutoComplete](/docs/components/google-maps-autocomplete) | Address autocomplete input |
+| [FileUploader](/docs/components/file-uploader) | File upload with variants |
+| [ColorPicker](/docs/components/color-picker) | Color selection input |
+| [API Service Call](/docs/components/api-service-call) | API request utilities |
+| [AutoSaveTextField](/docs/components/autosave-textfield) | Auto-saving text input |
+
+## Installation
+
+Components are included in the `authscape` npm package:
+
+```bash
+npm install authscape
+```
+
+## Usage
+
+Import components from the authscape package:
+
+```javascript
+import { NextImage, FileUploader, ColorPicker } from 'authscape/components';
+import { apiService, authService } from 'authscape';
+```
+
+## Component Design
+
+All AuthScape components follow these principles:
+
+1. **MUI Integration** - Components work seamlessly with Material-UI
+2. **TypeScript Support** - Full type definitions available
+3. **Responsive** - Mobile-first responsive design
+4. **Accessible** - WCAG 2.1 compliant
+5. **Themeable** - Respects MUI theme settings

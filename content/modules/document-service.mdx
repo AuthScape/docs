@@ -1,0 +1,63 @@
+---
+title: Document Service
+description: Automapping, history tracking, and document processing utilities.
+---
+
+# Document Service
+
+The Document Service module provides automapping capabilities, change history tracking, and document processing utilities.
+
+## Features
+
+- Auto-mapping from documents to entities
+- Change history tracking
+- Document comparison
+- Processing pipelines
+- OCR integration
+- Format conversion
+
+## Usage
+
+### Auto-Map Document
+
+```javascript
+import { apiService } from 'authscape';
+
+const mapped = await apiService().post('/api/DocumentService/AutoMap', {
+  documentId: 123,
+  targetEntity: 'Invoice'
+});
+```
+
+### Get Document History
+
+```javascript
+const history = await apiService().get('/api/DocumentService/History/123');
+// [
+//   { version: 2, modifiedBy: 'John', modifiedAt: '...', changes: [...] },
+//   { version: 1, modifiedBy: 'Jane', modifiedAt: '...', changes: [...] }
+// ]
+```
+
+### Compare Documents
+
+```javascript
+const diff = await apiService().post('/api/DocumentService/Compare', {
+  documentId1: 123,
+  documentId2: 456
+});
+```
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "DocumentService": {
+      "EnableOCR": true,
+      "HistoryRetentionDays": 90,
+      "MaxProcessingThreads": 4
+    }
+  }
+}
+```

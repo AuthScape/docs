@@ -1,0 +1,335 @@
+---
+title: Ticketing
+description: Customer support ticket system with Stripe integration and inbound webhooks.
+---
+
+# Ticketing
+
+The Ticketing module provides a complete customer support system with ticket creation, responses, attachments, and optional Stripe payment integration.
+
+## Features
+
+- Create and manage support tickets
+- Ticket responses and conversations
+- File attachments
+- Priority levels and status tracking
+- Stripe integration for payment-related tickets
+- Inbound webhooks for external messages
+- Email notifications
+- Assignment to support agents
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Tickets/List` | GET | List tickets |
+| `/api/Tickets/Get/{id}` | GET | Get ticket with messages |
+| `/api/Tickets/Create` | POST | Create new ticket |
+| `/api/Tickets/Reply` | POST | Add reply to ticket |
+| `/api/Tickets/UpdateStatus` | PUT | Update ticket status |
+| `/api/Tickets/Assign` | PUT | Assign to agent |
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "Tickets": {
+      "NotifyOnNewTicket": true,
+      "NotifyOnReply": true,
+      "AutoAssignment": true,
+      "DefaultPriority": "Normal"
+    }
+  }
+}
+```
+
+## Usage
+
+### Create a Ticket
+
+```javascript
+import { apiService } from 'authscape';
+
+const ticket = await apiService().post('/api/Tickets/Create', {
+  subject: 'Billing Issue',
+  message: 'I was charged twice for my subscription.',
+  priority: 'High',
+  category: 'Billing'
+});
+```
+
+### List User's Tickets
+
+```javascript
+const tickets = await apiService().get('/api/Tickets/List');
+// Returns tickets for the logged-in user
+```
+
+### Get Ticket with Messages
+
+```javascript
+const ticket = await apiService().get('/api/Tickets/Get/123');
+// {
+//   id: 123,
+//   subject: 'Billing Issue',
+//   status: 'Open',
+//   priority: 'High',
+//   category: 'Billing',
+//   createdAt: '2024-01-15T10:00:00Z',
+//   messages: [
+//     { id: 1, content: 'Initial message...', sender: 'user', createdAt: '...' },
+//     { id: 2, content: 'Response...', sender: 'agent', createdAt: '...' }
+//   ],
+//   attachments: [...]
+// }
+```
+
+### Reply to Ticket
+
+```javascript
+await apiService().post('/api/Tickets/Reply', {
+  ticketId: 123,
+  message: 'Thank you for your help!',
+  attachments: [] // Optional file IDs
+});
+```
+
+## Models
+
+### Ticket
+
+```csharp
+public class Ticket
+{
+    public long Id { get; set; }
+    public string Subject { get; set; }
+    public TicketStatus Status { get; set; }
+    public TicketPriority Priority { get; set; }
+    public string Category { get; set; }
+    public long UserId { get; set; }
+    public long? AssignedToId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+
+    public User User { get; set; }
+    public User AssignedTo { get; set; }
+    public List<TicketMessage> Messages { get; set; }
+}
+
+public enum TicketStatus
+{
+    Open,
+    InProgress,
+    WaitingOnCustomer,
+    Resolved,
+    Closed
+}
+
+public enum TicketPriority
+{
+    Low,
+    Normal,
+    High,
+    Urgent
+}
+```
+
+### TicketMessage
+
+```csharp
+public class TicketMessage
+{
+    public long Id { get; set; }
+    public long TicketId { get; set; }
+    public string Content { get; set; }
+    public long SenderId { get; set; }
+    public MessageSender SenderType { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<TicketAttachment> Attachments { get; set; }
+}
+```
+
+## Stripe Integration
+
+Process payments directly from tickets:
+
+```javascript
+// Add payment link to ticket
+await apiService().post('/api/Tickets/AddPaymentRequest', {
+  ticketId: 123,
+  amount: 49.99,
+  description: 'Support fee for custom development',
+  currency: 'usd'
+});
+```
+
+### Backend Implementation
+
+```csharp
+[HttpPost]
+public async Task<IActionResult> AddPaymentRequest([FromBody] PaymentRequestDto request)
+{
+    var ticket = await _ticketService.GetById(request.TicketId);
+
+    // Create Stripe Payment Link
+    var paymentLink = await _stripeService.CreatePaymentLink(
+        request.Amount,
+        request.Currency,
+        $"Ticket #{ticket.Id}: {request.Description}"
+    );
+
+    // Add message with payment link
+    await _ticketService.AddMessage(ticket.Id, new TicketMessage
+    {
+        Content = $"Payment requested: ${request.Amount}. [Pay Now]({paymentLink.Url})",
+        SenderType = MessageSender.Agent
+    });
+
+    return Ok();
+}
+```
+
+## Inbound Webhooks
+
+Receive messages from external sources (email, chat, etc.):
+
+```csharp
+[HttpPost]
+[Route("api/Tickets/Webhook/{secret}")]
+public async Task<IActionResult> InboundWebhook(
+    string secret,
+    [FromBody] InboundMessage message)
+{
+    // Validate webhook secret
+    if (secret != _config["Tickets:WebhookSecret"])
+        return Unauthorized();
+
+    // Find or create ticket
+    var ticket = await _ticketService.FindByExternalId(message.ThreadId)
+        ?? await _ticketService.Create(new Ticket
+        {
+            Subject = message.Subject,
+            UserId = await GetOrCreateUser(message.From)
+        });
+
+    // Add message
+    await _ticketService.AddMessage(ticket.Id, new TicketMessage
+    {
+        Content = message.Body,
+        SenderType = MessageSender.External
+    });
+
+    // Process attachments
+    foreach (var attachment in message.Attachments)
+    {
+        await _ticketService.AddAttachment(ticket.Id, attachment);
+    }
+
+    return Ok();
+}
+```
+
+## Support Dashboard
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import { DataGrid } from '@mui/x-data-grid';
+import { Chip, Select, MenuItem } from '@mui/material';
+
+export default function SupportDashboard() {
+  const [tickets, setTickets] = useState([]);
+  const [filter, setFilter] = useState('open');
+
+  useEffect(() => {
+    loadTickets();
+  }, [filter]);
+
+  async function loadTickets() {
+    const data = await apiService().get(`/api/Tickets/Admin/List?status=${filter}`);
+    setTickets(data.data);
+  }
+
+  async function updateStatus(ticketId, status) {
+    await apiService().put('/api/Tickets/UpdateStatus', { ticketId, status });
+    loadTickets();
+  }
+
+  const columns = [
+    { field: 'id', headerName: 'ID', width: 70 },
+    { field: 'subject', headerName: 'Subject', flex: 1 },
+    {
+      field: 'priority',
+      headerName: 'Priority',
+      renderCell: (params) => (
+        <Chip
+          label={params.value}
+          color={
+            params.value === 'Urgent' ? 'error' :
+            params.value === 'High' ? 'warning' : 'default'
+          }
+          size="small"
+        />
+      )
+    },
+    { field: 'status', headerName: 'Status', width: 130 },
+    { field: 'createdAt', headerName: 'Created', width: 150 }
+  ];
+
+  return (
+    <div>
+      <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
+        <MenuItem value="open">Open</MenuItem>
+        <MenuItem value="inprogress">In Progress</MenuItem>
+        <MenuItem value="resolved">Resolved</MenuItem>
+        <MenuItem value="all">All</MenuItem>
+      </Select>
+
+      <DataGrid
+        rows={tickets}
+        columns={columns}
+        onRowClick={(params) => window.location.href = `/admin/tickets/${params.id}`}
+      />
+    </div>
+  );
+}
+```
+
+## Email Notifications
+
+Configure email notifications for ticket events:
+
+```csharp
+public class TicketNotificationService
+{
+    private readonly ISendGridService _email;
+
+    public async Task NotifyNewTicket(Ticket ticket)
+    {
+        await _email.SendTemplateEmail(
+            "support@yourapp.com",
+            "new-ticket",
+            new { ticket.Subject, ticket.Priority, TicketUrl = $"/tickets/{ticket.Id}" }
+        );
+    }
+
+    public async Task NotifyNewReply(Ticket ticket, TicketMessage message)
+    {
+        await _email.SendTemplateEmail(
+            ticket.User.Email,
+            "ticket-reply",
+            new { ticket.Subject, message.Content, TicketUrl = $"/tickets/{ticket.Id}" }
+        );
+    }
+}
+```
+
+## Best Practices
+
+1. **Set clear SLAs** - Define response time expectations per priority
+2. **Use canned responses** - Pre-written responses for common issues
+3. **Enable auto-assignment** - Route tickets to appropriate agents
+4. **Track metrics** - Monitor response times and resolution rates
+5. **Integrate with Stripe** - Handle billing issues directly in tickets

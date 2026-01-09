@@ -1,0 +1,129 @@
+---
+title: SQLite Configuration
+description: Connection string examples and configuration for SQLite databases.
+---
+
+# SQLite Configuration
+
+SQLite is perfect for development, testing, and small-scale applications. It requires no separate database server and stores data in a single file.
+
+## Connection String Examples
+
+### File-Based Database
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Data Source=AuthScape.db"
+  }
+}
+```
+
+### Full Path
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Data Source=C:\\Data\\AuthScape.db"
+  }
+}
+```
+
+### In-Memory Database
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Data Source=:memory:"
+  }
+}
+```
+
+### Shared In-Memory (Multiple Connections)
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Data Source=AuthScape;Mode=Memory;Cache=Shared"
+  }
+}
+```
+
+## Connection String Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `Data Source` | File path or `:memory:` | `AuthScape.db`, `:memory:` |
+| `Mode` | Open mode | `ReadWriteCreate`, `ReadWrite`, `ReadOnly`, `Memory` |
+| `Cache` | Cache sharing mode | `Default`, `Shared`, `Private` |
+| `Password` | Encryption password | `mypassword` |
+
+## Use Cases
+
+### Development
+SQLite is ideal for local development:
+- No database server required
+- Fast setup
+- Easy to reset (just delete the file)
+- Works offline
+
+### Testing
+Use in-memory SQLite for fast unit tests:
+
+```csharp
+services.AddAuthScapeDatabase("Data Source=:memory:");
+```
+
+### Small Applications
+Suitable for:
+- Prototypes and demos
+- Single-user applications
+- Embedded systems
+- Mobile backends with low traffic
+
+## Limitations
+
+SQLite has some limitations compared to SQL Server or PostgreSQL:
+
+- **Concurrency:** Limited write concurrency
+- **No network access:** File must be local
+- **No stored procedures:** Limited SQL features
+- **Size limits:** Practical limit around 1TB
+
+## Best Practices
+
+1. **Don't use for production** with high concurrency
+2. **Use full paths** to avoid file location issues
+3. **Backup regularly** - it's just a file
+4. **Use WAL mode** for better concurrency:
+
+```json
+"Data Source=AuthScape.db;Pooling=True;Mode=ReadWriteCreate"
+```
+
+## Database File Location
+
+By default, relative paths are relative to the application's working directory. For ASP.NET Core apps, this is typically the project root in development.
+
+```csharp
+// Get the full path programmatically
+var dbPath = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "AuthScape",
+    "data.db"
+);
+```
+
+## Migrations
+
+SQLite migrations work the same as other providers:
+
+```bash
+# Generate migration
+dotnet ef migrations add InitialCreate
+
+# Apply to database
+dotnet ef database update
+```
+
+The database file will be created automatically if it doesn't exist.

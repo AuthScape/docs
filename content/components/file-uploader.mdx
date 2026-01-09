@@ -1,0 +1,274 @@
+---
+title: FileUploader
+description: File upload component with multiple variants and progress tracking.
+---
+
+# FileUploader
+
+The FileUploader component provides file upload functionality with multiple variants, progress tracking, and customization options.
+
+## Features
+
+- Multiple file upload
+- Progress tracking
+- File type restrictions
+- Custom upload endpoint
+- Two variants: filemanager and custom
+- Drag and drop support
+- Delete confirmation
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `url` | string | required | Upload endpoint URL |
+| `params` | object | {} | Additional form data params |
+| `multiple` | boolean | false | Allow multiple files |
+| `fileLoaderUri` | string | - | URL to load existing files |
+| `children` | ReactNode | - | Custom trigger element |
+| `isHidden` | boolean | false | Hide the upload button |
+| `refOveride` | ref | - | External ref for triggering |
+| `primaryColor` | string | - | Custom primary color |
+| `onConfirmDelete` | function | - | Delete confirmation handler |
+| `accept` | string | "*" | Accepted file types |
+| `variant` | string | "filemanager" | "filemanager" or "custom" |
+| `onUploadCompleted` | function | - | Called when upload completes |
+
+## Usage
+
+### Basic File Manager
+
+```jsx
+import { FileUploader } from 'authscape/components';
+
+export default function DocumentUpload() {
+  return (
+    <FileUploader
+      url="/api/Documents/Upload"
+      accept=".pdf,.doc,.docx"
+      onUploadCompleted={(file) => {
+        console.log('Uploaded:', file);
+      }}
+    />
+  );
+}
+```
+
+### Multiple Files
+
+```jsx
+<FileUploader
+  url="/api/Documents/Upload"
+  multiple={true}
+  accept="image/*"
+  onUploadCompleted={(files) => {
+    console.log('Uploaded files:', files);
+  }}
+/>
+```
+
+### With Additional Parameters
+
+```jsx
+<FileUploader
+  url="/api/Documents/Upload"
+  params={{
+    folderId: 123,
+    category: 'invoices'
+  }}
+  onUploadCompleted={handleComplete}
+/>
+```
+
+### Custom Trigger
+
+```jsx
+<FileUploader
+  url="/api/Documents/Upload"
+  variant="custom"
+  accept="image/*"
+  onUploadCompleted={handleComplete}
+>
+  <Button variant="contained">
+    <UploadIcon /> Upload Image
+  </Button>
+</FileUploader>
+```
+
+### With External Ref
+
+```jsx
+import { useRef } from 'react';
+
+export default function ProfilePicture() {
+  const uploaderRef = useRef();
+
+  return (
+    <div>
+      <Avatar onClick={() => uploaderRef.current.click()} />
+      <FileUploader
+        url="/api/Account/ProfilePicture"
+        accept="image/*"
+        isHidden={true}
+        refOveride={uploaderRef}
+        onUploadCompleted={(file) => {
+          setProfilePicture(file.url);
+        }}
+      />
+    </div>
+  );
+}
+```
+
+### Load Existing Files
+
+```jsx
+<FileUploader
+  url="/api/Documents/Upload"
+  fileLoaderUri={`/api/Documents/List?folderId=${folderId}`}
+  onConfirmDelete={async (file) => {
+    return window.confirm(`Delete ${file.name}?`);
+  }}
+  onUploadCompleted={handleComplete}
+/>
+```
+
+## Implementation
+
+```jsx
+import { useState, useRef, useCallback } from 'react';
+import { Box, Button, LinearProgress, IconButton, Typography } from '@mui/material';
+import { Upload, Delete, InsertDriveFile } from '@mui/icons-material';
+import { apiService } from 'authscape';
+
+export function FileUploader({
+  url,
+  params = {},
+  multiple = false,
+  fileLoaderUri,
+  children,
+  isHidden = false,
+  refOveride,
+  primaryColor,
+  onConfirmDelete,
+  accept = '*',
+  variant = 'filemanager',
+  onUploadCompleted
+}) {
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const inputRef = refOveride || useRef();
+
+  useEffect(() => {
+    if (fileLoaderUri) {
+      loadExistingFiles();
+    }
+  }, [fileLoaderUri]);
+
+  async function loadExistingFiles() {
+    const data = await apiService().get(fileLoaderUri);
+    setFiles(data);
+  }
+
+  async function handleFileSelect(e) {
+    const selectedFiles = Array.from(e.target.files);
+    if (!selectedFiles.length) return;
+
+    setUploading(true);
+    setProgress(0);
+
+    for (const file of selectedFiles) {
+      const formData = new FormData();
+      formData.append('file', file);
+      Object.entries(params).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+
+      try {
+        const result = await apiService().post(url, formData, {
+          onUploadProgress: (e) => {
+            setProgress(Math.round((e.loaded * 100) / e.total));
+          }
+        });
+        setFiles(prev => [...prev, result]);
+        onUploadCompleted?.(result);
+      } catch (error) {
+        console.error('Upload failed:', error);
+      }
+    }
+
+    setUploading(false);
+    e.target.value = '';
+  }
+
+  async function handleDelete(file) {
+    if (onConfirmDelete) {
+      const confirmed = await onConfirmDelete(file);
+      if (!confirmed) return;
+    }
+    setFiles(prev => prev.filter(f => f.id !== file.id));
+  }
+
+  if (variant === 'custom') {
+    return (
+      <Box onClick={() => inputRef.current?.click()}>
+        <input
+          ref={inputRef}
+          type="file"
+          hidden
+          accept={accept}
+          multiple={multiple}
+          onChange={handleFileSelect}
+        />
+        {children}
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 2, border: '1px dashed', borderColor: 'grey.400', borderRadius: 1 }}>
+      <input
+        ref={inputRef}
+        type="file"
+        hidden
+        accept={accept}
+        multiple={multiple}
+        onChange={handleFileSelect}
+      />
+
+      {!isHidden && (
+        <Button
+          variant="outlined"
+          startIcon={<Upload />}
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          sx={{ mb: 2 }}
+        >
+          {uploading ? 'Uploading...' : 'Select Files'}
+        </Button>
+      )}
+
+      {uploading && <LinearProgress variant="determinate" value={progress} sx={{ mb: 2 }} />}
+
+      {files.map(file => (
+        <Box key={file.id} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <InsertDriveFile sx={{ mr: 1 }} />
+          <Typography sx={{ flex: 1 }}>{file.name}</Typography>
+          <IconButton size="small" onClick={() => handleDelete(file)}>
+            <Delete />
+          </IconButton>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+```
+
+## Best Practices
+
+1. **Set file type restrictions** - Use accept prop to limit types
+2. **Handle errors** - Show upload failure messages
+3. **Show progress** - Use progress bar for large files
+4. **Confirm deletes** - Use onConfirmDelete for safety
+5. **Validate file size** - Check size before uploading

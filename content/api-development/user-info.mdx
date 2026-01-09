@@ -1,0 +1,193 @@
+---
+title: User Information
+description: Access current user information in API endpoints.
+---
+
+# User Information
+
+Access the authenticated user's information in your API controllers.
+
+## Using IUserManagementService
+
+The recommended approach:
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class ProfileController : ControllerBase
+{
+    private readonly IUserManagementService _userManagementService;
+
+    public ProfileController(IUserManagementService userManagementService)
+    {
+        _userManagementService = userManagementService;
+    }
+
+    [HttpGet]
+    public IActionResult GetProfile()
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        return Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName,
+            user.CompanyId,
+            user.CompanyName,
+            user.Roles,
+            user.Permissions
+        });
+    }
+}
+```
+
+## Using Claims Directly
+
+Access claims from `User.Claims`:
+
+```csharp
+[HttpGet]
+public IActionResult GetUserInfo()
+{
+    var userId = User.FindFirst(Claims.Subject)?.Value;
+    var email = User.FindFirst(Claims.Email)?.Value;
+    var firstName = User.FindFirst("firstName")?.Value;
+    var lastName = User.FindFirst("lastName")?.Value;
+    var companyId = User.FindFirst("companyId")?.Value;
+
+    return Ok(new { userId, email, firstName, lastName, companyId });
+}
+```
+
+## Parse Complex Claims
+
+Some claims contain JSON:
+
+```csharp
+[HttpGet]
+public IActionResult GetUserRoles()
+{
+    var rolesJson = User.FindFirst("usersRoles")?.Value;
+    var roles = new List<RoleInfo>();
+
+    if (!string.IsNullOrEmpty(rolesJson))
+    {
+        roles = JsonSerializer.Deserialize<List<RoleInfo>>(rolesJson);
+    }
+
+    var permissionsJson = User.FindFirst("userPermissions")?.Value;
+    var permissions = new List<PermissionInfo>();
+
+    if (!string.IsNullOrEmpty(permissionsJson))
+    {
+        permissions = JsonSerializer.Deserialize<List<PermissionInfo>>(permissionsJson);
+    }
+
+    return Ok(new { roles, permissions });
+}
+```
+
+## Check User Roles
+
+```csharp
+[HttpPost]
+public IActionResult AdminAction()
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    if (!user.Roles.Any(r => r.Name == "Admin"))
+    {
+        return Forbid();
+    }
+
+    // Perform admin action
+    return Ok();
+}
+```
+
+## Check User Permissions
+
+```csharp
+[HttpPut]
+public IActionResult UpdateResource(int resourceId)
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    if (!user.Permissions.Any(p => p.Name == "CanEditResources"))
+    {
+        return Forbid();
+    }
+
+    // Update resource
+    return Ok();
+}
+```
+
+## Company-Scoped Queries
+
+Filter data by user's company:
+
+```csharp
+[HttpGet]
+public async Task<IActionResult> GetCompanyUsers()
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    var users = await _context.Users
+        .Where(u => u.CompanyId == user.CompanyId)
+        .ToListAsync();
+
+    return Ok(users);
+}
+```
+
+## Helper Extension Methods
+
+Create extension methods for common operations:
+
+```csharp
+public static class ClaimsPrincipalExtensions
+{
+    public static long GetUserId(this ClaimsPrincipal principal)
+    {
+        var claim = principal.FindFirst(Claims.Subject);
+        return long.Parse(claim?.Value ?? "0");
+    }
+
+    public static long? GetCompanyId(this ClaimsPrincipal principal)
+    {
+        var claim = principal.FindFirst("companyId");
+        return string.IsNullOrEmpty(claim?.Value)
+            ? null
+            : long.Parse(claim.Value);
+    }
+
+    public static bool HasRole(this ClaimsPrincipal principal, string roleName)
+    {
+        var rolesJson = principal.FindFirst("usersRoles")?.Value;
+        if (string.IsNullOrEmpty(rolesJson)) return false;
+
+        var roles = JsonSerializer.Deserialize<List<RoleInfo>>(rolesJson);
+        return roles?.Any(r => r.Name == roleName) ?? false;
+    }
+}
+
+// Usage
+[HttpGet]
+public IActionResult Example()
+{
+    var userId = User.GetUserId();
+    var companyId = User.GetCompanyId();
+    var isAdmin = User.HasRole("Admin");
+
+    return Ok(new { userId, companyId, isAdmin });
+}
+```
+
+## Next Steps
+
+- [SignedInUser Object](/docs/api-development/signed-in-user)
+- [Claims & Identity](/docs/user-profile/claims-identity)

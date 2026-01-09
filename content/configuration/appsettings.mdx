@@ -1,0 +1,228 @@
+---
+title: appsettings.json Configuration
+description: Complete reference for all AppSettings configuration options in AuthScape.
+---
+
+# appsettings.json Configuration
+
+The `appsettings.json` file contains all the configuration settings for your AuthScape application. This page documents every available option.
+
+## Basic Structure
+
+```json
+{
+  "AppSettings": {
+    "Name": "Your App Name",
+    "Stage": 1,
+    "IDPUrl": "https://localhost:44303",
+    "DatabaseContext": "Server=localhost;Database=AuthScape;...",
+    "EnableCompanyMode": true
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information"
+    }
+  }
+}
+```
+
+## Core Settings
+
+### Name
+**Type:** `string`
+
+The name of your application or company, displayed in the UI.
+
+```json
+"Name": "My Application"
+```
+
+### Stage
+**Type:** `number` (1-3)
+
+The deployment stage of your application:
+- `1` = Development
+- `2` = Staging
+- `3` = Production
+
+```json
+"Stage": 1
+```
+
+### IDPUrl
+**Type:** `string` (Required)
+
+The URL of your Identity Provider. Must be a valid absolute URL.
+
+```json
+"IDPUrl": "https://localhost:44303"
+```
+
+### DatabaseContext
+**Type:** `string` (Required)
+
+The database connection string. The provider is auto-detected from the format.
+
+```json
+// SQL Server
+"DatabaseContext": "Server=localhost;Database=AuthScape;Trusted_Connection=true;TrustServerCertificate=true;"
+
+// PostgreSQL
+"DatabaseContext": "Host=localhost;Database=authscape;Username=postgres;Password=yourpassword"
+
+// SQLite
+"DatabaseContext": "Data Source=AuthScape.db"
+```
+
+### EnableCompanyMode
+**Type:** `boolean`
+
+Enable multi-tenant company mode. When true, users are associated with companies.
+
+```json
+"EnableCompanyMode": true
+```
+
+## URL Settings
+
+### WebsiteRedirectUrl
+**Type:** `string`
+
+URL to redirect users after authentication.
+
+```json
+"WebsiteRedirectUrl": "http://localhost:3000"
+```
+
+### InviteSignupRedirectUrl
+**Type:** `string`
+
+URL to redirect users after accepting an invite.
+
+```json
+"InviteSignupRedirectUrl": "http://localhost:3000/welcome"
+```
+
+### LoginRedirectUrl
+**Type:** `string`
+
+URL to redirect users after login.
+
+```json
+"LoginRedirectUrl": "http://localhost:3000/dashboard"
+```
+
+## Token Settings
+
+### DataProtectionTokenProviderOptions_TokenLifespanByDays
+**Type:** `number` (1-365)
+
+The lifespan of password reset and verification tokens in days.
+
+```json
+"DataProtectionTokenProviderOptions_TokenLifespanByDays": 1
+```
+
+## Stripe Configuration
+
+```json
+"Stripe": {
+  "PublishableKey": "pk_test_...",
+  "SecretKey": "sk_test_...",
+  "SigningSecret": "whsec_..."
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `PublishableKey` | Your Stripe publishable key (starts with `pk_test_` or `pk_live_`) |
+| `SecretKey` | Your Stripe secret key (starts with `sk_test_` or `sk_live_`) |
+| `SigningSecret` | Webhook signing secret (starts with `whsec_`) |
+
+## SendGrid Configuration
+
+```json
+"SendGrid": {
+  "APIKey": "SG.xxxxx",
+  "FromEmail": "hello@yourcompany.com",
+  "FromName": "Your Company"
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `APIKey` | Your SendGrid API key (starts with `SG.`) |
+| `FromEmail` | Default sender email address |
+| `FromName` | Default sender name |
+
+## Storage Configuration
+
+```json
+"Storage": {
+  "AzureConnectionString": "DefaultEndpointsProtocol=https;...",
+  "BaseUri": "https://yourstorage.blob.core.windows.net",
+  "UserProfileContainer": "profiles"
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `AzureConnectionString` | Azure Blob Storage connection string |
+| `BaseUri` | Base URL for accessing blobs |
+| `UserProfileContainer` | Container name for user profile images |
+
+## OpenAI Configuration
+
+```json
+"OpenAI": {
+  "APIKey": "sk-..."
+}
+```
+
+## Full Example
+
+Here's a complete `appsettings.Development.json` example:
+
+```json
+{
+  "AppSettings": {
+    "Name": "AuthScape Dev",
+    "Stage": 1,
+    "IDPUrl": "https://localhost:44303",
+    "DatabaseContext": "Server=localhost;Database=AuthScape;Trusted_Connection=true;TrustServerCertificate=true;",
+    "WebsiteRedirectUrl": "http://localhost:3000",
+    "LoginRedirectUrl": "http://localhost:3000/dashboard",
+    "EnableCompanyMode": true,
+    "DataProtectionTokenProviderOptions_TokenLifespanByDays": 1,
+    "Stripe": {
+      "PublishableKey": "pk_test_xxx",
+      "SecretKey": "sk_test_xxx",
+      "SigningSecret": "whsec_xxx"
+    },
+    "SendGrid": {
+      "APIKey": "SG.xxx",
+      "FromEmail": "dev@yourcompany.com",
+      "FromName": "Dev Team"
+    }
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft": "Information",
+      "Microsoft.Hosting.Lifetime": "Information"
+    }
+  },
+  "AllowedHosts": "*"
+}
+```
+
+## Validation
+
+AuthScape validates your configuration at startup. If validation is enabled and a required field is missing or invalid, the application will fail to start with a descriptive error message.
+
+Validated fields include:
+- `IDPUrl` - Must be a valid URL
+- `DatabaseContext` - Required
+- `Stripe.SecretKey` - Must start with `sk_test_` or `sk_live_`
+- `Stripe.PublishableKey` - Must start with `pk_test_` or `pk_live_`
+- `SendGrid.APIKey` - Must start with `SG.`

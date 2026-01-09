@@ -1,0 +1,137 @@
+---
+title: IDP Admin Overview
+description: Overview of AuthScape's Identity Provider (IDP) administration features and OpenIddict configuration.
+---
+
+# IDP Admin Overview
+
+AuthScape's Identity Provider (IDP) is built on **OpenIddict**, providing a complete OAuth 2.0 and OpenID Connect implementation for managing users, roles, permissions, and authentication flows.
+
+## Key Features
+
+- **OpenIddict Integration** - Full OAuth 2.0 / OpenID Connect server
+- **User Management** - Create, update, archive, and manage users
+- **Role-Based Access Control** - Define roles and assign to users
+- **Permissions System** - Granular permission management
+- **Custom Fields** - Extend user profiles with custom data
+- **Invitation System** - Send email invitations to new users
+- **Multi-Factor Authentication** - FIDO2/WebAuthn support
+
+## OpenIddict Configuration
+
+AuthScape configures OpenIddict in the `AuthenticationManager.cs`:
+
+```csharp
+services.AddOpenIddict()
+    // Register the OpenIddict core components
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore()
+               .UseDbContext<DatabaseContext>();
+    })
+
+    // Register the OpenIddict server components
+    .AddServer(options =>
+    {
+        // Enable endpoints
+        options.SetAuthorizationEndpointUris("/connect/authorize")
+               .SetTokenEndpointUris("/connect/token")
+               .SetEndSessionEndpointUris("/connect/logout")
+               .SetIntrospectionEndpointUris("/connect/introspect")
+               .SetUserInfoEndpointUris("/connect/userinfo");
+
+        // Register scopes
+        options.RegisterScopes(
+            Scopes.Email,
+            Scopes.Profile,
+            Scopes.Roles,
+            Scopes.OfflineAccess
+        );
+
+        // Configure flows
+        options.AllowAuthorizationCodeFlow()
+            .RequireProofKeyForCodeExchange()
+            .AllowClientCredentialsFlow()
+            .AllowRefreshTokenFlow();
+
+        // Token lifetime
+        options.SetAccessTokenLifetime(TimeSpan.FromHours(1));
+    })
+
+    // Register validation components
+    .AddValidation(options =>
+    {
+        options.UseLocalServer();
+        options.UseAspNetCore();
+    });
+```
+
+## Authentication Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/connect/authorize` | GET | Start authorization flow |
+| `/connect/token` | POST | Exchange code for tokens |
+| `/connect/logout` | GET/POST | End user session |
+| `/connect/userinfo` | GET/POST | Get authenticated user info |
+| `/connect/introspect` | POST | Validate access tokens |
+
+## Identity Configuration
+
+AuthScape maps Identity claims to OpenIddict claims:
+
+```csharp
+services.Configure<IdentityOptions>(options =>
+{
+    options.ClaimsIdentity.UserNameClaimType = Claims.Name;
+    options.ClaimsIdentity.UserIdClaimType = Claims.Subject;
+    options.ClaimsIdentity.RoleClaimType = Claims.Role;
+});
+```
+
+## Multi-Factor Authentication
+
+MFA is enabled through claims-based authorization:
+
+```csharp
+services.AddScoped<IUserClaimsPrincipalFactory<AppUser>,
+    AdditionalUserClaimsPrincipalFactory>();
+
+services.AddAuthorization(options =>
+    options.AddPolicy("TwoFactorEnabled", x => x.RequireClaim("amr", "mfa"))
+);
+```
+
+## Certificate Configuration
+
+For production, configure signing and encryption certificates:
+
+```csharp
+if (_currentEnvironment.IsDevelopment())
+{
+    options.AddDevelopmentEncryptionCertificate();
+    options.AddDevelopmentSigningCertificate();
+}
+else
+{
+    options.AddEncryptionCertificate(encryptionCertificateThumbprint);
+    options.AddSigningCertificate(signingCertificateThumbprint);
+}
+```
+
+## Services Overview
+
+| Service | Purpose |
+|---------|---------|
+| `IUserManagementService` | Get signed-in user info |
+| `IRoleService` | Manage roles |
+| `IPermissionService` | Manage permissions |
+| `UserManager<AppUser>` | ASP.NET Identity user operations |
+| `RoleManager<Role>` | ASP.NET Identity role operations |
+
+## Next Steps
+
+- [User Management](/docs/admin/user-management) - CRUD operations for users
+- [Roles & Permissions](/docs/admin/roles-permissions) - Configure RBAC
+- [Custom Fields](/docs/admin/custom-fields) - Extend user profiles
+- [Invitations](/docs/admin/invitations) - Email-based user onboarding

@@ -1,0 +1,352 @@
+---
+title: Generate Service (AI)
+description: AI-powered content generation tools including FAQ, blog posts, meta descriptions, and more.
+---
+
+# Generate Service (AI)
+
+The Generate Service module provides AI-powered content generation tools for creating FAQs, blog posts, meta descriptions, emails, and other text content.
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| FAQ Generator | Generate FAQ sections from topics |
+| Title Rewriter | Create alternative headlines |
+| Blog Post Generator | Generate full blog articles |
+| Paragraph Writer | Expand bullet points to paragraphs |
+| Sentence Rewriter | Rephrase existing content |
+| Meta Description Generator | SEO-optimized meta descriptions |
+| Cold Email Writer | Sales and outreach emails |
+| Story Generator | Creative writing assistance |
+| Grammar Fixer | Fix grammar and spelling |
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "GenerateService": {
+      "Provider": "OpenAI",
+      "ApiKey": "sk-...",
+      "Model": "gpt-4",
+      "MaxTokens": 2000
+    }
+  }
+}
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Generate/FAQ` | POST | Generate FAQ section |
+| `/api/Generate/BlogPost` | POST | Generate blog post |
+| `/api/Generate/MetaDescription` | POST | Generate meta description |
+| `/api/Generate/Rewrite` | POST | Rewrite content |
+| `/api/Generate/Email` | POST | Generate email |
+| `/api/Generate/GrammarFix` | POST | Fix grammar |
+
+## Usage
+
+### Generate FAQ
+
+```javascript
+import { apiService } from 'authscape';
+
+const faqs = await apiService().post('/api/Generate/FAQ', {
+  topic: 'AuthScape authentication',
+  context: 'AuthScape is a multi-tenant SaaS platform with OAuth2 authentication',
+  count: 5
+});
+// [
+//   {
+//     question: 'What authentication methods does AuthScape support?',
+//     answer: 'AuthScape supports OAuth2 and OpenID Connect, including...'
+//   },
+//   ...
+// ]
+```
+
+### Generate Blog Post
+
+```javascript
+const blogPost = await apiService().post('/api/Generate/BlogPost', {
+  title: 'Getting Started with Multi-Tenant SaaS',
+  keywords: ['multi-tenant', 'SaaS', 'authentication'],
+  tone: 'professional',
+  length: 'medium',  // short, medium, long
+  outline: [
+    'Introduction to multi-tenancy',
+    'Benefits of multi-tenant architecture',
+    'Implementation challenges',
+    'Best practices'
+  ]
+});
+// {
+//   title: 'Getting Started with Multi-Tenant SaaS',
+//   content: '<p>Multi-tenant SaaS applications...</p>',
+//   excerpt: 'Learn how to build scalable multi-tenant applications...',
+//   suggestedTags: ['saas', 'architecture', 'multi-tenant']
+// }
+```
+
+### Generate Meta Description
+
+```javascript
+const meta = await apiService().post('/api/Generate/MetaDescription', {
+  pageTitle: 'Pricing Plans - AuthScape',
+  pageContent: 'Choose from our starter, pro, and enterprise plans...',
+  targetKeywords: ['SaaS pricing', 'authentication platform']
+});
+// {
+//   description: 'Compare AuthScape pricing plans. Start free, scale to enterprise...',
+//   characterCount: 145
+// }
+```
+
+### Rewrite Content
+
+```javascript
+const rewritten = await apiService().post('/api/Generate/Rewrite', {
+  content: 'Our product is good for businesses.',
+  style: 'professional',
+  instruction: 'Make it more compelling and specific'
+});
+// {
+//   content: 'Our enterprise platform empowers businesses to streamline operations...'
+// }
+```
+
+### Generate Cold Email
+
+```javascript
+const email = await apiService().post('/api/Generate/Email', {
+  type: 'cold_outreach',
+  recipientInfo: {
+    name: 'John',
+    company: 'Acme Corp',
+    role: 'CTO'
+  },
+  product: 'AuthScape authentication platform',
+  valueProposition: 'Reduce development time by 80%',
+  callToAction: 'Schedule a demo'
+});
+// {
+//   subject: 'Streamline Acme Corp\'s authentication - 15 min chat?',
+//   body: 'Hi John,\n\nI noticed Acme Corp is...'
+// }
+```
+
+### Fix Grammar
+
+```javascript
+const fixed = await apiService().post('/api/Generate/GrammarFix', {
+  text: 'Their going to the store yesterday and buyed some items.'
+});
+// {
+//   corrected: 'They went to the store yesterday and bought some items.',
+//   corrections: [
+//     { original: 'Their', corrected: 'They', type: 'grammar' },
+//     { original: 'going', corrected: 'went', type: 'tense' },
+//     { original: 'buyed', corrected: 'bought', type: 'spelling' }
+//   ]
+// }
+```
+
+## Backend Implementation
+
+### GenerateController
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize]
+public class GenerateController : ControllerBase
+{
+    private readonly IGenerateService _generateService;
+
+    [HttpPost]
+    public async Task<IActionResult> FAQ([FromBody] FaqRequest request)
+    {
+        var faqs = await _generateService.GenerateFaqAsync(
+            request.Topic,
+            request.Context,
+            request.Count
+        );
+        return Ok(faqs);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> BlogPost([FromBody] BlogPostRequest request)
+    {
+        var post = await _generateService.GenerateBlogPostAsync(request);
+        return Ok(post);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> MetaDescription([FromBody] MetaRequest request)
+    {
+        var meta = await _generateService.GenerateMetaDescriptionAsync(
+            request.PageTitle,
+            request.PageContent,
+            request.TargetKeywords
+        );
+        return Ok(meta);
+    }
+}
+```
+
+### GenerateService
+
+```csharp
+public class GenerateService : IGenerateService
+{
+    private readonly OpenAIClient _openAI;
+    private readonly GenerateSettings _settings;
+
+    public async Task<List<FaqItem>> GenerateFaqAsync(
+        string topic,
+        string context,
+        int count)
+    {
+        var prompt = $@"
+Generate {count} frequently asked questions about {topic}.
+
+Context: {context}
+
+Return as JSON array with 'question' and 'answer' fields.
+";
+
+        var response = await _openAI.GetChatCompletionsAsync(
+            _settings.Model,
+            new ChatCompletionsOptions
+            {
+                Messages = { new ChatMessage(ChatRole.User, prompt) },
+                MaxTokens = _settings.MaxTokens
+            }
+        );
+
+        var json = response.Value.Choices[0].Message.Content;
+        return JsonSerializer.Deserialize<List<FaqItem>>(json);
+    }
+}
+```
+
+## React Component
+
+```jsx
+import { useState } from 'react';
+import { apiService } from 'authscape';
+import { TextField, Button, Select, MenuItem, Box, Typography, CircularProgress } from '@mui/material';
+
+export default function ContentGenerator() {
+  const [tool, setTool] = useState('faq');
+  const [input, setInput] = useState('');
+  const [output, setOutput] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function generate() {
+    setLoading(true);
+    try {
+      let result;
+      switch (tool) {
+        case 'faq':
+          result = await apiService().post('/api/Generate/FAQ', {
+            topic: input,
+            count: 5
+          });
+          break;
+        case 'meta':
+          result = await apiService().post('/api/Generate/MetaDescription', {
+            pageTitle: input
+          });
+          break;
+        case 'rewrite':
+          result = await apiService().post('/api/Generate/Rewrite', {
+            content: input,
+            style: 'professional'
+          });
+          break;
+      }
+      setOutput(result);
+    } catch (error) {
+      alert('Generation failed');
+    }
+    setLoading(false);
+  }
+
+  return (
+    <Box sx={{ maxWidth: 600, mx: 'auto', p: 3 }}>
+      <Typography variant="h5" gutterBottom>AI Content Generator</Typography>
+
+      <Select
+        fullWidth
+        value={tool}
+        onChange={(e) => setTool(e.target.value)}
+        sx={{ mb: 2 }}
+      >
+        <MenuItem value="faq">FAQ Generator</MenuItem>
+        <MenuItem value="meta">Meta Description</MenuItem>
+        <MenuItem value="rewrite">Content Rewriter</MenuItem>
+        <MenuItem value="blog">Blog Post</MenuItem>
+        <MenuItem value="email">Email Writer</MenuItem>
+      </Select>
+
+      <TextField
+        fullWidth
+        multiline
+        rows={4}
+        label="Input"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        sx={{ mb: 2 }}
+      />
+
+      <Button
+        variant="contained"
+        onClick={generate}
+        disabled={loading || !input}
+      >
+        {loading ? <CircularProgress size={24} /> : 'Generate'}
+      </Button>
+
+      {output && (
+        <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+          <Typography variant="h6">Output</Typography>
+          <pre>{JSON.stringify(output, null, 2)}</pre>
+        </Box>
+      )}
+    </Box>
+  );
+}
+```
+
+## Rate Limiting
+
+Protect against excessive API usage:
+
+```csharp
+services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("generate", config =>
+    {
+        config.PermitLimit = 10;
+        config.Window = TimeSpan.FromMinutes(1);
+    });
+});
+
+[RateLimiter("generate")]
+public async Task<IActionResult> FAQ([FromBody] FaqRequest request)
+{
+    // ...
+}
+```
+
+## Best Practices
+
+1. **Set token limits** - Prevent runaway costs with max tokens
+2. **Cache results** - Cache generated content when appropriate
+3. **Rate limit** - Protect against abuse
+4. **Review output** - AI content should be reviewed before publishing
+5. **Provide context** - More context leads to better output

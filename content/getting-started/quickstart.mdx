@@ -1,0 +1,66 @@
+---
+title: Quick Start
+description: Get up and running with AuthScape in minutes.
+---
+
+# Quick Start
+
+Get AuthScape running in your development environment quickly.
+
+## Prerequisites
+
+- .NET 8 SDK
+- Node.js 18+
+- SQL Server, PostgreSQL, or SQLite
+
+## Clone the Repository
+
+```bash
+git clone https://github.com/authscape/authscape.git
+cd authscape
+```
+
+## Configure the Database
+
+Edit `appsettings.json` to set your connection string:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost;Database=AuthScape;Trusted_Connection=True;TrustServerCertificate=True"
+  }
+}
+```
+
+## Run Migrations
+
+```bash
+dotnet ef database update
+```
+
+## Start the Backend
+
+```bash
+cd AuthScape.API
+dotnet run
+```
+
+## Start the Frontend
+
+```bash
+cd AuthScape.NextJS
+npm install
+npm run dev
+```
+
+## Access the Application
+
+- Frontend: http://localhost:3000
+- API: https://localhost:5001
+- Swagger: https://localhost:5001/swagger
+
+## Next Steps
+
+- [Installation](/docs/getting-started/installation) - Detailed installation guide
+- [Configuration](/docs/configuration/overview) - Configure your environment
+- [Authentication](/docs/authentication/overview) - Set up authentication

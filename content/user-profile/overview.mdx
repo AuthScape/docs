@@ -1,0 +1,227 @@
+---
+title: User Profile Overview
+description: Understanding the AppUser model and SignedInUser object in AuthScape.
+---
+
+# User Profile Overview
+
+AuthScape provides a comprehensive user profile system built on ASP.NET Identity with extended properties for multi-tenant applications.
+
+## AppUser Model
+
+The `AppUser` class extends `IdentityUser<long>` with additional properties:
+
+```csharp
+public class AppUser : IdentityUser<long>
+{
+    // Basic Info
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string? locale { get; set; }
+    public string? PhotoUri { get; set; }
+
+    // Timestamps
+    public DateTimeOffset Created { get; set; }
+    public DateTimeOffset? Archived { get; set; }
+    public DateTimeOffset LastLoggedIn { get; set; }
+    public DateTimeOffset? WhenInviteSent { get; set; }
+
+    // Status
+    public bool IsActive { get; set; }
+
+    // Multi-Tenant Support
+    public long? CompanyId { get; set; }
+    public long? LocationId { get; set; }
+    public Company? Company { get; set; }
+    public Location? Location { get; set; }
+
+    // Localization
+    public string? Culture { get; set; }
+    public string? Country { get; set; }
+    public string? TimeZoneId { get; set; }
+
+    // Payment Integration
+    public ICollection<Wallet> Cards { get; set; }
+    public ICollection<StoreCredit> StoreCredits { get; set; }
+
+    // Multi-Location Access
+    public ICollection<UserLocations> UserLocations { get; set; }
+
+    // Passwordless Auth (FIDO2/WebAuthn)
+    public virtual ICollection<Fido2Credential> Credentials { get; set; }
+
+    // Runtime Properties (not stored in DB)
+    [NotMapped]
+    public string? Permissions { get; set; }
+    [NotMapped]
+    public string? Roles { get; set; }
+    [NotMapped]
+    public List<CustomFieldResult> CustomFields { get; set; }
+}
+```
+
+## Inherited from IdentityUser
+
+The base `IdentityUser<long>` provides:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Id` | long | Primary key |
+| `UserName` | string | Username (usually email) |
+| `Email` | string | Email address |
+| `EmailConfirmed` | bool | Email verification status |
+| `PhoneNumber` | string | Phone number |
+| `PhoneNumberConfirmed` | bool | Phone verification status |
+| `TwoFactorEnabled` | bool | MFA enabled |
+| `LockoutEnd` | DateTimeOffset? | Account lockout expiration |
+| `LockoutEnabled` | bool | Lockout feature enabled |
+| `AccessFailedCount` | int | Failed login attempts |
+
+## SignedInUser Object
+
+When a user authenticates, their info is available via `SignedInUser`:
+
+```csharp
+public class SignedInUser
+{
+    public long Id { get; set; }
+    public string Email { get; set; }
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public Guid? Identifier { get; set; }
+    public long? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+    public long? LocationId { get; set; }
+    public string? LocationName { get; set; }
+    public string locale { get; set; }
+    public List<QueryRole> Roles { get; set; }
+    public List<Permission> Permissions { get; set; }
+}
+
+public class QueryRole
+{
+    public long Id { get; set; }
+    public string Name { get; set; }
+}
+
+public class Permission
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; }
+}
+```
+
+## Getting Current User (Backend)
+
+Inject `IUserManagementService` to access the signed-in user:
+
+```csharp
+[Route("api/[controller]")]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class ProfileController : ControllerBase
+{
+    private readonly IUserManagementService _userManagementService;
+
+    public ProfileController(IUserManagementService userManagementService)
+    {
+        _userManagementService = userManagementService;
+    }
+
+    [HttpGet]
+    public IActionResult GetProfile()
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        return Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName,
+            user.CompanyId,
+            user.CompanyName,
+            user.LocationId,
+            user.LocationName,
+            user.Roles,
+            user.Permissions
+        });
+    }
+}
+```
+
+## Getting Current User (Frontend)
+
+```javascript
+import { apiService } from 'authscape';
+
+// Get current user profile
+const user = await apiService().get('/UserManagement/Get');
+
+console.log(user.firstName, user.lastName);
+console.log('Company:', user.companyName);
+console.log('Roles:', user.roles.map(r => r.name).join(', '));
+console.log('Permissions:', user.permissions.map(p => p.name).join(', '));
+```
+
+## User States
+
+| State | IsActive | Archived | Description |
+|-------|----------|----------|-------------|
+| Active | true | null | Normal active user |
+| Inactive | false | null | Disabled but not archived |
+| Archived | false | timestamp | Soft-deleted |
+
+## Multi-Tenant Structure
+
+AuthScape supports multi-tenant applications:
+
+```
+Company (Tenant)
+├── Location 1
+│   └── Users assigned to Location 1
+├── Location 2
+│   └── Users assigned to Location 2
+└── Users not assigned to specific location
+```
+
+### Checking User's Company
+
+```csharp
+var user = _userManagementService.GetSignedInUser();
+
+// Filter data by company
+var companyData = await _context.Products
+    .Where(p => p.CompanyId == user.CompanyId)
+    .ToListAsync();
+```
+
+### Multi-Location Access
+
+Users can have access to multiple locations:
+
+```csharp
+// Get all locations user has access to
+var userLocations = await _context.UserLocations
+    .Where(ul => ul.UserId == user.Id)
+    .Select(ul => ul.Location)
+    .ToListAsync();
+```
+
+## Custom Fields
+
+Custom fields extend the user profile dynamically:
+
+```javascript
+const user = await apiService().get(`/Users/GetUser?id=${userId}`);
+
+// Access custom fields
+user.customFields.forEach(field => {
+  console.log(`${field.name}: ${field.value}`);
+});
+```
+
+## Next Steps
+
+- [Profile Management](/docs/user-profile/profile-management) - Edit user profiles
+- [Authentication Flows](/docs/user-profile/authentication-flows) - Login/logout/signup
+- [Claims & Identity](/docs/user-profile/claims-identity) - JWT token claims

@@ -1,0 +1,284 @@
+---
+title: Blogging
+description: Full-featured blog module with categories, tags, SEO, and content management.
+---
+
+# Blogging
+
+The Blogging module provides a complete blog system with categories, tags, SEO optimization, and rich content editing.
+
+## Features
+
+- Blog post creation and editing
+- Categories and tags
+- SEO metadata (title, description, keywords)
+- Featured images
+- Draft and published states
+- Scheduled publishing
+- Author attribution
+- Comments (optional)
+- RSS feed generation
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Blog/Posts` | GET | List blog posts |
+| `/api/Blog/Posts/{slug}` | GET | Get post by slug |
+| `/api/Blog/Posts` | POST | Create new post |
+| `/api/Blog/Posts/{id}` | PUT | Update post |
+| `/api/Blog/Posts/{id}` | DELETE | Delete post |
+| `/api/Blog/Categories` | GET | List categories |
+| `/api/Blog/Tags` | GET | List tags |
+
+## Usage
+
+### List Blog Posts
+
+```javascript
+import { apiService } from 'authscape';
+
+const posts = await apiService().get('/api/Blog/Posts?page=1&pageSize=10&category=technology&status=published');
+```
+
+### Get Single Post
+
+```javascript
+const post = await apiService().get('/api/Blog/Posts/my-first-post');
+// {
+//   id: 1,
+//   title: 'My First Post',
+//   slug: 'my-first-post',
+//   content: '<p>Post content...</p>',
+//   excerpt: 'Short summary...',
+//   featuredImage: 'https://...',
+//   author: { id: 1, name: 'John Doe' },
+//   category: { id: 1, name: 'Technology' },
+//   tags: ['react', 'nextjs'],
+//   publishedAt: '2024-01-15T10:00:00Z',
+//   seo: {
+//     title: 'SEO Title',
+//     description: 'Meta description',
+//     keywords: ['keyword1', 'keyword2']
+//   }
+// }
+```
+
+### Create Blog Post
+
+```javascript
+const newPost = await apiService().post('/api/Blog/Posts', {
+  title: 'New Blog Post',
+  slug: 'new-blog-post',
+  content: '<p>Full HTML content...</p>',
+  excerpt: 'Short summary for listings',
+  categoryId: 1,
+  tags: ['react', 'tutorial'],
+  status: 'draft',  // or 'published'
+  publishAt: null,   // or scheduled date
+  seo: {
+    title: 'Custom SEO Title',
+    description: 'Meta description for search engines',
+    keywords: ['keyword1', 'keyword2']
+  }
+});
+```
+
+## Models
+
+### BlogPost
+
+```csharp
+public class BlogPost
+{
+    public long Id { get; set; }
+    public string Title { get; set; }
+    public string Slug { get; set; }
+    public string Content { get; set; }
+    public string Excerpt { get; set; }
+    public string FeaturedImage { get; set; }
+    public long AuthorId { get; set; }
+    public long? CategoryId { get; set; }
+    public List<string> Tags { get; set; }
+    public PostStatus Status { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public DateTime? PublishAt { get; set; }
+    public string SeoTitle { get; set; }
+    public string SeoDescription { get; set; }
+    public string SeoKeywords { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    // Navigation
+    public User Author { get; set; }
+    public BlogCategory Category { get; set; }
+}
+
+public enum PostStatus
+{
+    Draft,
+    Published,
+    Scheduled,
+    Archived
+}
+```
+
+### BlogCategory
+
+```csharp
+public class BlogCategory
+{
+    public long Id { get; set; }
+    public string Name { get; set; }
+    public string Slug { get; set; }
+    public string Description { get; set; }
+    public long? ParentId { get; set; }
+    public int SortOrder { get; set; }
+}
+```
+
+## Next.js Blog Page
+
+```jsx
+// pages/blog/[slug].js
+import { apiService } from 'authscape';
+import Head from 'next/head';
+
+export async function getStaticPaths() {
+  const posts = await apiService().get('/api/Blog/Posts?status=published');
+  return {
+    paths: posts.data.map(post => ({ params: { slug: post.slug } })),
+    fallback: 'blocking'
+  };
+}
+
+export async function getStaticProps({ params }) {
+  const post = await apiService().get(`/api/Blog/Posts/${params.slug}`);
+  return {
+    props: { post },
+    revalidate: 60
+  };
+}
+
+export default function BlogPost({ post }) {
+  return (
+    <>
+      <Head>
+        <title>{post.seo?.title || post.title}</title>
+        <meta name="description" content={post.seo?.description || post.excerpt} />
+        <meta name="keywords" content={post.seo?.keywords?.join(', ')} />
+        <meta property="og:title" content={post.title} />
+        <meta property="og:image" content={post.featuredImage} />
+      </Head>
+
+      <article>
+        <h1>{post.title}</h1>
+        <p>By {post.author.name} on {new Date(post.publishedAt).toLocaleDateString()}</p>
+        <img src={post.featuredImage} alt={post.title} />
+        <div dangerouslySetInnerHTML={{ __html: post.content }} />
+        <div>
+          {post.tags.map(tag => (
+            <span key={tag} className="tag">#{tag}</span>
+          ))}
+        </div>
+      </article>
+    </>
+  );
+}
+```
+
+## RSS Feed
+
+Generate RSS feed for blog posts:
+
+```csharp
+[HttpGet]
+[Route("/blog/rss")]
+public async Task<IActionResult> Rss()
+{
+    var posts = await _blogService.GetPublishedPosts(20);
+
+    var feed = new SyndicationFeed(
+        "My Blog",
+        "Blog description",
+        new Uri("https://yoursite.com/blog"),
+        posts.Select(p => new SyndicationItem(
+            p.Title,
+            p.Excerpt,
+            new Uri($"https://yoursite.com/blog/{p.Slug}"),
+            p.Id.ToString(),
+            new DateTimeOffset(p.PublishedAt.Value)
+        ))
+    );
+
+    using var stream = new MemoryStream();
+    using var writer = XmlWriter.Create(stream);
+    new Rss20FeedFormatter(feed).WriteTo(writer);
+    writer.Flush();
+
+    return File(stream.ToArray(), "application/rss+xml");
+}
+```
+
+## Admin Dashboard
+
+Create a blog admin interface:
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import { DataGrid } from '@mui/x-data-grid';
+import { Button, Chip } from '@mui/material';
+
+export default function BlogAdmin() {
+  const [posts, setPosts] = useState([]);
+
+  useEffect(() => {
+    loadPosts();
+  }, []);
+
+  async function loadPosts() {
+    const data = await apiService().get('/api/Blog/Posts');
+    setPosts(data.data);
+  }
+
+  const columns = [
+    { field: 'title', headerName: 'Title', flex: 1 },
+    {
+      field: 'status',
+      headerName: 'Status',
+      renderCell: (params) => (
+        <Chip
+          label={params.value}
+          color={params.value === 'published' ? 'success' : 'default'}
+        />
+      )
+    },
+    { field: 'publishedAt', headerName: 'Published', width: 150 },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      renderCell: (params) => (
+        <Button href={`/admin/blog/edit/${params.row.id}`}>Edit</Button>
+      )
+    }
+  ];
+
+  return (
+    <div style={{ height: 600 }}>
+      <Button variant="contained" href="/admin/blog/new" sx={{ mb: 2 }}>
+        New Post
+      </Button>
+      <DataGrid rows={posts} columns={columns} />
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Use slugs for URLs** - Better SEO than numeric IDs
+2. **Optimize images** - Compress and resize featured images
+3. **Set proper SEO metadata** - Title, description, keywords
+4. **Use scheduled publishing** - Plan content in advance
+5. **Enable caching** - Cache blog listings and individual posts

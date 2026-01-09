@@ -1,0 +1,185 @@
+---
+title: Protecting Endpoints
+description: Secure your API endpoints with authentication and authorization.
+---
+
+# Protecting Endpoints
+
+AuthScape uses OpenIddict validation to protect API endpoints.
+
+## Basic Authentication
+
+Add the `[Authorize]` attribute to require authentication:
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public IActionResult GetProfile()
+    {
+        // Only authenticated users can access
+        return Ok(new { message = "Authenticated!" });
+    }
+}
+```
+
+## Role-Based Authorization
+
+Require specific roles:
+
+```csharp
+[Authorize(Roles = "Admin")]
+[HttpDelete]
+public async Task<IActionResult> DeleteUser(long id)
+{
+    // Only Admin role can access
+    await _userService.DeleteAsync(id);
+    return Ok();
+}
+
+[Authorize(Roles = "Admin,Manager")]
+[HttpPut]
+public async Task<IActionResult> UpdateUser(UserDto user)
+{
+    // Admin OR Manager can access
+    await _userService.UpdateAsync(user);
+    return Ok();
+}
+```
+
+## Policy-Based Authorization
+
+Define custom policies:
+
+```csharp
+// In Program.cs
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("CanEditUsers", policy =>
+        policy.RequireRole("Admin", "UserManager"));
+
+    options.AddPolicy("TwoFactorEnabled", policy =>
+        policy.RequireClaim("amr", "mfa"));
+
+    options.AddPolicy("SameCompany", policy =>
+        policy.AddRequirements(new SameCompanyRequirement()));
+});
+```
+
+Use policies on endpoints:
+
+```csharp
+[Authorize(Policy = "CanEditUsers")]
+[HttpPut]
+public async Task<IActionResult> UpdateUser(UserDto user)
+{
+    await _userService.UpdateAsync(user);
+    return Ok();
+}
+
+[Authorize(Policy = "TwoFactorEnabled")]
+[HttpGet]
+public IActionResult GetSensitiveData()
+{
+    // Requires MFA
+    return Ok(sensitiveData);
+}
+```
+
+## Custom Authorization Handler
+
+```csharp
+public class SameCompanyRequirement : IAuthorizationRequirement { }
+
+public class SameCompanyHandler : AuthorizationHandler<SameCompanyRequirement, UserDto>
+{
+    private readonly IUserManagementService _userService;
+
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        SameCompanyRequirement requirement,
+        UserDto resource)
+    {
+        var currentUser = _userService.GetSignedInUser();
+
+        if (currentUser.CompanyId == resource.CompanyId)
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+## Mixed Authentication
+
+Allow both authenticated and anonymous access:
+
+```csharp
+[HttpGet]
+[AllowAnonymous]
+public IActionResult GetPublicData()
+{
+    // Anyone can access
+    return Ok(publicData);
+}
+
+[HttpGet]
+public IActionResult GetUserData()
+{
+    if (User.Identity?.IsAuthenticated == true)
+    {
+        return Ok(userData);
+    }
+    return Ok(limitedData);
+}
+```
+
+## Programmatic Authorization
+
+Check authorization in code:
+
+```csharp
+[HttpPut]
+public async Task<IActionResult> UpdateResource(ResourceDto resource)
+{
+    var currentUser = _userManagementService.GetSignedInUser();
+
+    // Check ownership
+    if (resource.OwnerId != currentUser.Id &&
+        !currentUser.Roles.Any(r => r.Name == "Admin"))
+    {
+        return Forbid();
+    }
+
+    await _service.UpdateAsync(resource);
+    return Ok();
+}
+```
+
+## Scope-Based Authorization
+
+Require specific OAuth scopes:
+
+```csharp
+[Authorize]
+[HttpGet]
+public IActionResult GetData()
+{
+    if (!User.HasScope("api1"))
+    {
+        return Forbid();
+    }
+
+    return Ok(data);
+}
+```
+
+## Next Steps
+
+- [User Information](/docs/api-development/user-info)
+- [SignedInUser Object](/docs/api-development/signed-in-user)

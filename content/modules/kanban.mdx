@@ -1,0 +1,164 @@
+---
+title: Kanban
+description: Kanban boards with columns, cards, and drag-and-drop functionality.
+---
+
+# Kanban
+
+The Kanban module provides visual task management with boards, columns, cards, and drag-and-drop functionality.
+
+## Features
+
+- Multiple boards
+- Customizable columns
+- Card management
+- Drag-and-drop reordering
+- Labels and priorities
+- Due dates
+- Assignees
+- Comments
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Kanban/Boards` | GET | List boards |
+| `/api/Kanban/Boards/{id}` | GET | Get board with cards |
+| `/api/Kanban/Cards` | POST | Create card |
+| `/api/Kanban/Cards/{id}` | PUT | Update card |
+| `/api/Kanban/MoveCard` | POST | Move card to column |
+
+## Usage
+
+### Get Board
+
+```javascript
+import { apiService } from 'authscape';
+
+const board = await apiService().get('/api/Kanban/Boards/123');
+// {
+//   id: 123,
+//   name: 'Project Alpha',
+//   columns: [
+//     { id: 1, name: 'To Do', cards: [...] },
+//     { id: 2, name: 'In Progress', cards: [...] },
+//     { id: 3, name: 'Done', cards: [...] }
+//   ]
+// }
+```
+
+### Create Card
+
+```javascript
+await apiService().post('/api/Kanban/Cards', {
+  boardId: 123,
+  columnId: 1,
+  title: 'New Feature',
+  description: 'Implement user dashboard',
+  assigneeId: 456,
+  dueDate: '2024-02-15',
+  priority: 'high',
+  labels: ['feature', 'frontend']
+});
+```
+
+### Move Card
+
+```javascript
+await apiService().post('/api/Kanban/MoveCard', {
+  cardId: 789,
+  targetColumnId: 2,
+  position: 0  // Position in column
+});
+```
+
+## React Kanban Component
+
+```jsx
+import { useState, useEffect } from 'react';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { apiService } from 'authscape';
+import { Paper, Typography, Card, CardContent, Box } from '@mui/material';
+
+export default function KanbanBoard({ boardId }) {
+  const [board, setBoard] = useState(null);
+
+  useEffect(() => {
+    loadBoard();
+  }, [boardId]);
+
+  async function loadBoard() {
+    const data = await apiService().get(`/api/Kanban/Boards/${boardId}`);
+    setBoard(data);
+  }
+
+  async function onDragEnd(result) {
+    if (!result.destination) return;
+
+    await apiService().post('/api/Kanban/MoveCard', {
+      cardId: result.draggableId,
+      targetColumnId: result.destination.droppableId,
+      position: result.destination.index
+    });
+
+    loadBoard();
+  }
+
+  if (!board) return null;
+
+  return (
+    <DragDropContext onDragEnd={onDragEnd}>
+      <Box sx={{ display: 'flex', gap: 2, overflow: 'auto' }}>
+        {board.columns.map(column => (
+          <Droppable key={column.id} droppableId={String(column.id)}>
+            {(provided) => (
+              <Paper
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                sx={{ minWidth: 280, p: 1, bgcolor: 'grey.100' }}
+              >
+                <Typography variant="h6">{column.name}</Typography>
+                {column.cards.map((card, index) => (
+                  <Draggable key={card.id} draggableId={String(card.id)} index={index}>
+                    {(provided) => (
+                      <Card
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                        sx={{ mb: 1 }}
+                      >
+                        <CardContent>
+                          <Typography>{card.title}</Typography>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+              </Paper>
+            )}
+          </Droppable>
+        ))}
+      </Box>
+    </DragDropContext>
+  );
+}
+```
+
+## Model
+
+```csharp
+public class KanbanCard
+{
+    public long Id { get; set; }
+    public long BoardId { get; set; }
+    public long ColumnId { get; set; }
+    public string Title { get; set; }
+    public string Description { get; set; }
+    public long? AssigneeId { get; set; }
+    public DateTime? DueDate { get; set; }
+    public string Priority { get; set; }
+    public List<string> Labels { get; set; }
+    public int Position { get; set; }
+}
+```

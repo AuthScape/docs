@@ -1,0 +1,223 @@
+---
+title: SignedInUser Object
+description: The SignedInUser object contains all authenticated user information.
+---
+
+# SignedInUser Object
+
+The `SignedInUser` object provides comprehensive information about the authenticated user.
+
+## Properties
+
+```csharp
+public class SignedInUser
+{
+    public long Id { get; set; }
+    public string Email { get; set; }
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string? PhoneNumber { get; set; }
+    public string? PhotoUri { get; set; }
+    public long? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+    public long? LocationId { get; set; }
+    public string? LocationName { get; set; }
+    public string? StripeCustomerId { get; set; }
+    public List<QueryRole> Roles { get; set; }
+    public List<UserPermission> Permissions { get; set; }
+}
+```
+
+## Getting SignedInUser
+
+```csharp
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class MyController : ControllerBase
+{
+    private readonly IUserManagementService _userManagementService;
+
+    public MyController(IUserManagementService userManagementService)
+    {
+        _userManagementService = userManagementService;
+    }
+
+    [HttpGet]
+    public IActionResult GetData()
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        // Access properties
+        var userId = user.Id;
+        var email = user.Email;
+        var fullName = $"{user.FirstName} {user.LastName}";
+        var companyId = user.CompanyId;
+
+        return Ok(new { userId, email, fullName, companyId });
+    }
+}
+```
+
+## Working with Roles
+
+```csharp
+[HttpGet]
+public IActionResult CheckRole()
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    // Check if user has specific role
+    var isAdmin = user.Roles.Any(r => r.Name == "Admin");
+    var isManager = user.Roles.Any(r => r.Name == "Manager");
+
+    // Get all role names
+    var roleNames = user.Roles.Select(r => r.Name).ToList();
+
+    return Ok(new { isAdmin, isManager, roleNames });
+}
+```
+
+## Working with Permissions
+
+```csharp
+[HttpPut]
+public IActionResult UpdateResource(ResourceDto resource)
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    // Check specific permission
+    var canEdit = user.Permissions.Any(p => p.Name == "CanEditResources");
+    var canDelete = user.Permissions.Any(p => p.Name == "CanDeleteResources");
+
+    if (!canEdit)
+    {
+        return Forbid();
+    }
+
+    // Proceed with update
+    return Ok();
+}
+```
+
+## Multi-Tenant Queries
+
+Use company/location for data isolation:
+
+```csharp
+[HttpGet]
+public async Task<IActionResult> GetCompanyData()
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    if (!user.CompanyId.HasValue)
+    {
+        return BadRequest("User not associated with a company");
+    }
+
+    var data = await _context.Resources
+        .Where(r => r.CompanyId == user.CompanyId)
+        .ToListAsync();
+
+    return Ok(data);
+}
+
+[HttpGet]
+public async Task<IActionResult> GetLocationData()
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    var data = await _context.Inventory
+        .Where(i => i.LocationId == user.LocationId)
+        .ToListAsync();
+
+    return Ok(data);
+}
+```
+
+## Stripe Integration
+
+Access Stripe customer ID:
+
+```csharp
+[HttpPost]
+public async Task<IActionResult> CreatePayment(PaymentRequest request)
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    if (string.IsNullOrEmpty(user.StripeCustomerId))
+    {
+        // Create Stripe customer first
+        var customer = await _stripeService.CreateCustomer(user.Email);
+        await _userService.UpdateStripeCustomerId(user.Id, customer.Id);
+        user.StripeCustomerId = customer.Id;
+    }
+
+    var payment = await _stripeService.CreatePaymentIntent(
+        user.StripeCustomerId,
+        request.Amount
+    );
+
+    return Ok(payment);
+}
+```
+
+## Frontend Access
+
+Get SignedInUser via API:
+
+```javascript
+import { apiService } from 'authscape';
+
+const user = await apiService().get('/UserManagement/Get');
+
+console.log(user.id);
+console.log(user.email);
+console.log(user.firstName);
+console.log(user.lastName);
+console.log(user.companyId);
+console.log(user.companyName);
+console.log(user.roles);       // Array of { id, name }
+console.log(user.permissions); // Array of { id, name }
+```
+
+## Create Custom Service
+
+Extend for your needs:
+
+```csharp
+public interface ICurrentUserService
+{
+    SignedInUser GetCurrentUser();
+    bool HasPermission(string permissionName);
+    bool HasRole(string roleName);
+    bool IsAdmin { get; }
+}
+
+public class CurrentUserService : ICurrentUserService
+{
+    private readonly IUserManagementService _userManagementService;
+    private SignedInUser? _cachedUser;
+
+    public SignedInUser GetCurrentUser()
+    {
+        return _cachedUser ??= _userManagementService.GetSignedInUser();
+    }
+
+    public bool HasPermission(string permissionName)
+    {
+        return GetCurrentUser().Permissions.Any(p => p.Name == permissionName);
+    }
+
+    public bool HasRole(string roleName)
+    {
+        return GetCurrentUser().Roles.Any(r => r.Name == roleName);
+    }
+
+    public bool IsAdmin => HasRole("Admin");
+}
+```
+
+## Next Steps
+
+- [User Information](/docs/api-development/user-info)
+- [Roles & Permissions](/docs/admin/roles-permissions)
+- [Claims & Identity](/docs/user-profile/claims-identity)

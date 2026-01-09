@@ -1,0 +1,111 @@
+---
+title: Azure Key Vault
+description: Securely store production secrets in Azure Key Vault.
+---
+
+# Azure Key Vault
+
+Azure Key Vault provides secure, centralized secret management for production environments.
+
+## Setup Azure Key Vault
+
+### 1. Create Key Vault
+
+```bash
+az keyvault create \
+  --name "authscape-vault" \
+  --resource-group "authscape-rg" \
+  --location "eastus"
+```
+
+### 2. Add Secrets
+
+```bash
+az keyvault secret set \
+  --vault-name "authscape-vault" \
+  --name "ConnectionStrings--DefaultConnection" \
+  --value "Server=..."
+
+az keyvault secret set \
+  --vault-name "authscape-vault" \
+  --name "AppSettings--Stripe--SecretKey" \
+  --value "sk_live_xxx"
+```
+
+Note: Use `--` (double dash) for hierarchy, not `__`.
+
+## Install NuGet Package
+
+```bash
+dotnet add package Azure.Extensions.AspNetCore.Configuration.Secrets
+```
+
+## Configure in Program.cs
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+if (!builder.Environment.IsDevelopment())
+{
+    var keyVaultUri = builder.Configuration["KeyVault:Uri"];
+
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(keyVaultUri),
+        new DefaultAzureCredential()
+    );
+}
+```
+
+## Authentication Options
+
+### Managed Identity (Recommended)
+
+```csharp
+builder.Configuration.AddAzureKeyVault(
+    new Uri("https://authscape-vault.vault.azure.net/"),
+    new DefaultAzureCredential()
+);
+```
+
+### Service Principal
+
+```csharp
+builder.Configuration.AddAzureKeyVault(
+    new Uri("https://authscape-vault.vault.azure.net/"),
+    new ClientSecretCredential(
+        tenantId: "your-tenant-id",
+        clientId: "your-client-id",
+        clientSecret: "your-client-secret"
+    )
+);
+```
+
+## Grant Access
+
+```bash
+# For Managed Identity
+az keyvault set-policy \
+  --name "authscape-vault" \
+  --object-id "<managed-identity-object-id>" \
+  --secret-permissions get list
+
+# For Service Principal
+az keyvault set-policy \
+  --name "authscape-vault" \
+  --spn "<client-id>" \
+  --secret-permissions get list
+```
+
+## Secret Naming
+
+Key Vault secrets use `--` for hierarchy:
+
+| Configuration Key | Key Vault Secret Name |
+|------------------|----------------------|
+| `ConnectionStrings:DefaultConnection` | `ConnectionStrings--DefaultConnection` |
+| `AppSettings:Stripe:SecretKey` | `AppSettings--Stripe--SecretKey` |
+
+## Next Steps
+
+- [AWS Secrets Manager](/docs/configuration/aws-secrets)
+- [Priority Order](/docs/configuration/priority-order)

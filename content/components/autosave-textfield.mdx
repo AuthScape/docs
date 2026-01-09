@@ -1,0 +1,277 @@
+---
+title: AutoSaveTextField
+description: Text input that automatically saves changes after a delay.
+---
+
+# AutoSaveTextField
+
+The AutoSaveTextField component automatically saves changes after a configurable delay, providing a seamless editing experience.
+
+## Features
+
+- Debounced auto-save
+- Save indicator
+- Error handling
+- MUI TextField integration
+- Configurable delay
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | string | "" | Current value |
+| `onSave` | function | required | Called to save value |
+| `delay` | number | 1000 | Debounce delay in ms |
+| `label` | string | - | Input label |
+| `multiline` | boolean | false | Enable multiline |
+| `rows` | number | 1 | Number of rows |
+| `...props` | - | - | Other MUI TextField props |
+
+## Usage
+
+### Basic Usage
+
+```jsx
+import { AutoSaveTextField } from 'authscape/components';
+import { apiService } from 'authscape';
+
+export default function ProfileEditor({ userId }) {
+  const [bio, setBio] = useState('');
+
+  const handleSave = async (value) => {
+    await apiService().put('/api/Users/UpdateBio', {
+      userId,
+      bio: value
+    });
+  };
+
+  return (
+    <AutoSaveTextField
+      value={bio}
+      onSave={handleSave}
+      label="Bio"
+      multiline
+      rows={4}
+      fullWidth
+    />
+  );
+}
+```
+
+### With Custom Delay
+
+```jsx
+<AutoSaveTextField
+  value={notes}
+  onSave={handleSave}
+  delay={2000}  // Save after 2 seconds
+  label="Notes"
+  multiline
+  rows={6}
+/>
+```
+
+### In a Form
+
+```jsx
+export default function SettingsForm() {
+  const saveField = async (field, value) => {
+    await apiService().put('/api/Settings/Update', { field, value });
+  };
+
+  return (
+    <form>
+      <AutoSaveTextField
+        value={settings.companyName}
+        onSave={(value) => saveField('companyName', value)}
+        label="Company Name"
+        fullWidth
+        sx={{ mb: 2 }}
+      />
+      <AutoSaveTextField
+        value={settings.website}
+        onSave={(value) => saveField('website', value)}
+        label="Website"
+        fullWidth
+        sx={{ mb: 2 }}
+      />
+      <AutoSaveTextField
+        value={settings.description}
+        onSave={(value) => saveField('description', value)}
+        label="Description"
+        multiline
+        rows={4}
+        fullWidth
+      />
+    </form>
+  );
+}
+```
+
+## Implementation
+
+```jsx
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { TextField, InputAdornment, CircularProgress } from '@mui/material';
+import { Check, Error } from '@mui/icons-material';
+
+export function AutoSaveTextField({
+  value: initialValue,
+  onSave,
+  delay = 1000,
+  label,
+  ...props
+}) {
+  const [value, setValue] = useState(initialValue);
+  const [status, setStatus] = useState('idle');  // idle, saving, saved, error
+  const timerRef = useRef(null);
+  const lastSavedValue = useRef(initialValue);
+
+  useEffect(() => {
+    setValue(initialValue);
+    lastSavedValue.current = initialValue;
+  }, [initialValue]);
+
+  const save = useCallback(async (newValue) => {
+    if (newValue === lastSavedValue.current) return;
+
+    setStatus('saving');
+    try {
+      await onSave(newValue);
+      lastSavedValue.current = newValue;
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2000);
+    } catch (error) {
+      setStatus('error');
+      console.error('Save failed:', error);
+    }
+  }, [onSave]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    setValue(newValue);
+
+    // Clear existing timer
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
+    // Set new timer
+    timerRef.current = setTimeout(() => {
+      save(newValue);
+    }, delay);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  // Save on blur immediately
+  const handleBlur = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    if (value !== lastSavedValue.current) {
+      save(value);
+    }
+  };
+
+  const getEndAdornment = () => {
+    switch (status) {
+      case 'saving':
+        return (
+          <InputAdornment position="end">
+            <CircularProgress size={20} />
+          </InputAdornment>
+        );
+      case 'saved':
+        return (
+          <InputAdornment position="end">
+            <Check color="success" />
+          </InputAdornment>
+        );
+      case 'error':
+        return (
+          <InputAdornment position="end">
+            <Error color="error" />
+          </InputAdornment>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <TextField
+      value={value}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      label={label}
+      InputProps={{
+        endAdornment: getEndAdornment()
+      }}
+      {...props}
+    />
+  );
+}
+```
+
+## With Validation
+
+```jsx
+export function ValidatedAutoSaveTextField({
+  value,
+  onSave,
+  validate,
+  ...props
+}) {
+  const [error, setError] = useState(null);
+
+  const handleSave = async (newValue) => {
+    // Validate before saving
+    const validationError = validate?.(newValue);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
+    await onSave(newValue);
+  };
+
+  return (
+    <AutoSaveTextField
+      value={value}
+      onSave={handleSave}
+      error={Boolean(error)}
+      helperText={error}
+      {...props}
+    />
+  );
+}
+
+// Usage
+<ValidatedAutoSaveTextField
+  value={email}
+  onSave={handleSave}
+  validate={(value) => {
+    if (!value.includes('@')) {
+      return 'Invalid email address';
+    }
+    return null;
+  }}
+  label="Email"
+/>
+```
+
+## Best Practices
+
+1. **Set appropriate delay** - Balance responsiveness with API calls
+2. **Save on blur** - Don't lose data when user clicks away
+3. **Show save status** - Indicate saving, saved, or error
+4. **Handle errors** - Show error state and allow retry
+5. **Debounce properly** - Avoid multiple simultaneous saves

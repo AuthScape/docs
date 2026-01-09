@@ -1,0 +1,345 @@
+---
+title: Stripe Subscriptions
+description: Implement recurring billing with Stripe Subscriptions in AuthScape.
+---
+
+# Stripe Subscriptions
+
+AuthScape includes Stripe Subscriptions support for recurring billing, subscription management, and usage-based pricing.
+
+## Configuration
+
+Uses the same Stripe configuration:
+
+```json
+{
+  "AppSettings": {
+    "Stripe": {
+      "SecretKey": "sk_test_xxx",
+      "PublishableKey": "pk_test_xxx",
+      "SigningSecret": "whsec_xxx"
+    }
+  }
+}
+```
+
+## Service Interface
+
+```csharp
+public interface IStripeSubscriptionService
+{
+    Task<Subscription> CreateSubscription(string customerId, string priceId, string paymentMethodId = null);
+    Task<Subscription> GetSubscription(string subscriptionId);
+    Task<Subscription> UpdateSubscription(string subscriptionId, string newPriceId);
+    Task<Subscription> CancelSubscription(string subscriptionId, bool cancelAtPeriodEnd = true);
+    Task<Subscription> ReactivateSubscription(string subscriptionId);
+    Task<IEnumerable<Subscription>> GetCustomerSubscriptions(string customerId);
+    Task<Product> CreateProduct(string name, string description);
+    Task<Price> CreatePrice(string productId, long unitAmount, string currency, string interval);
+}
+```
+
+## Creating Products and Prices
+
+Products and prices should be created in the Stripe Dashboard or via API:
+
+```csharp
+public class StripeSubscriptionService : IStripeSubscriptionService
+{
+    public async Task<Product> CreateProduct(string name, string description)
+    {
+        var options = new ProductCreateOptions
+        {
+            Name = name,
+            Description = description
+        };
+
+        var service = new ProductService();
+        return await service.CreateAsync(options);
+    }
+
+    public async Task<Price> CreatePrice(
+        string productId,
+        long unitAmount,
+        string currency,
+        string interval)
+    {
+        var options = new PriceCreateOptions
+        {
+            Product = productId,
+            UnitAmount = unitAmount,  // Amount in cents
+            Currency = currency,
+            Recurring = new PriceRecurringOptions
+            {
+                Interval = interval  // "day", "week", "month", "year"
+            }
+        };
+
+        var service = new PriceService();
+        return await service.CreateAsync(options);
+    }
+}
+```
+
+## Creating Subscriptions
+
+```csharp
+public async Task<Subscription> CreateSubscription(
+    string customerId,
+    string priceId,
+    string paymentMethodId = null)
+{
+    var options = new SubscriptionCreateOptions
+    {
+        Customer = customerId,
+        Items = new List<SubscriptionItemOptions>
+        {
+            new SubscriptionItemOptions { Price = priceId }
+        },
+        PaymentBehavior = "default_incomplete",
+        PaymentSettings = new SubscriptionPaymentSettingsOptions
+        {
+            PaymentMethodTypes = new List<string> { "card" },
+            SaveDefaultPaymentMethod = "on_subscription"
+        },
+        Expand = new List<string> { "latest_invoice.payment_intent" }
+    };
+
+    if (!string.IsNullOrEmpty(paymentMethodId))
+    {
+        options.DefaultPaymentMethod = paymentMethodId;
+    }
+
+    var service = new SubscriptionService();
+    return await service.CreateAsync(options);
+}
+```
+
+## Subscription Controller
+
+```csharp
+[Route("api/[controller]/[action]")]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class SubscriptionController : ControllerBase
+{
+    [HttpPost]
+    public async Task<IActionResult> CreateSubscription([FromBody] CreateSubscriptionRequest request)
+    {
+        var user = _userManagementService.GetSignedInUser();
+        var company = await _context.Companies.FindAsync(user.CompanyId);
+
+        if (string.IsNullOrEmpty(company.StripeCustomerId))
+        {
+            // Create Stripe customer first
+            var customerService = new CustomerService();
+            var customer = await customerService.CreateAsync(new CustomerCreateOptions
+            {
+                Email = user.Email,
+                Name = $"{user.FirstName} {user.LastName}"
+            });
+            company.StripeCustomerId = customer.Id;
+            await _context.SaveChangesAsync();
+        }
+
+        var subscription = await _subscriptionService.CreateSubscription(
+            company.StripeCustomerId,
+            request.PriceId,
+            request.PaymentMethodId
+        );
+
+        return Ok(new
+        {
+            subscriptionId = subscription.Id,
+            status = subscription.Status,
+            clientSecret = subscription.LatestInvoice?.PaymentIntent?.ClientSecret
+        });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CancelSubscription([FromBody] CancelRequest request)
+    {
+        var subscription = await _subscriptionService.CancelSubscription(
+            request.SubscriptionId,
+            request.CancelAtPeriodEnd
+        );
+
+        return Ok(new
+        {
+            subscriptionId = subscription.Id,
+            status = subscription.Status,
+            cancelAt = subscription.CancelAt
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetSubscriptions()
+    {
+        var user = _userManagementService.GetSignedInUser();
+        var company = await _context.Companies.FindAsync(user.CompanyId);
+
+        if (string.IsNullOrEmpty(company?.StripeCustomerId))
+            return Ok(new List<object>());
+
+        var subscriptions = await _subscriptionService.GetCustomerSubscriptions(company.StripeCustomerId);
+
+        return Ok(subscriptions.Select(s => new
+        {
+            id = s.Id,
+            status = s.Status,
+            currentPeriodStart = s.CurrentPeriodStart,
+            currentPeriodEnd = s.CurrentPeriodEnd,
+            cancelAtPeriodEnd = s.CancelAtPeriodEnd,
+            items = s.Items.Data.Select(i => new
+            {
+                priceId = i.Price.Id,
+                productName = i.Price.Product.Name,
+                amount = i.Price.UnitAmount,
+                interval = i.Price.Recurring?.Interval
+            })
+        }));
+    }
+}
+```
+
+## Frontend Integration
+
+### Subscription Plans Component
+
+```jsx
+import { SubscriptionPlansComponent } from 'authscape/components/stripe';
+
+export default function PricingPage() {
+  const plans = [
+    { id: 'price_basic', name: 'Basic', price: 9.99, features: ['Feature 1', 'Feature 2'] },
+    { id: 'price_pro', name: 'Pro', price: 29.99, features: ['All Basic', 'Feature 3', 'Feature 4'] },
+    { id: 'price_enterprise', name: 'Enterprise', price: 99.99, features: ['All Pro', 'Priority Support'] }
+  ];
+
+  return (
+    <SubscriptionPlansComponent
+      plans={plans}
+      onPlanSelected={(plan) => {
+        // Handle plan selection
+        createSubscription(plan.id);
+      }}
+    />
+  );
+}
+```
+
+### Create Subscription
+
+```javascript
+import { apiService } from 'authscape';
+import { loadStripe } from '@stripe/stripe-js';
+
+async function createSubscription(priceId) {
+  // Create subscription on backend
+  const { clientSecret, subscriptionId } = await apiService().post('/Subscription/CreateSubscription', {
+    priceId
+  });
+
+  // If payment required, confirm with Stripe
+  if (clientSecret) {
+    const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_KEY);
+    const { error } = await stripe.confirmCardPayment(clientSecret);
+
+    if (error) {
+      alert(error.message);
+    } else {
+      alert('Subscription created!');
+    }
+  }
+}
+```
+
+### Manage Subscription
+
+```javascript
+async function cancelSubscription(subscriptionId, immediately = false) {
+  await apiService().post('/Subscription/CancelSubscription', {
+    subscriptionId,
+    cancelAtPeriodEnd: !immediately
+  });
+
+  alert(immediately ? 'Subscription cancelled' : 'Subscription will cancel at period end');
+}
+
+async function updateSubscription(subscriptionId, newPriceId) {
+  await apiService().post('/Subscription/UpdateSubscription', {
+    subscriptionId,
+    priceId: newPriceId
+  });
+
+  alert('Subscription updated');
+}
+```
+
+## Subscription Webhook Events
+
+```csharp
+[HttpPost("stripe/subscription-webhook")]
+public async Task<IActionResult> SubscriptionWebhook()
+{
+    var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+    var signature = Request.Headers["Stripe-Signature"];
+
+    var stripeEvent = EventUtility.ConstructEvent(json, signature, _webhookSecret);
+
+    switch (stripeEvent.Type)
+    {
+        case "customer.subscription.created":
+            var newSub = stripeEvent.Data.Object as Subscription;
+            await HandleSubscriptionCreated(newSub);
+            break;
+
+        case "customer.subscription.updated":
+            var updatedSub = stripeEvent.Data.Object as Subscription;
+            await HandleSubscriptionUpdated(updatedSub);
+            break;
+
+        case "customer.subscription.deleted":
+            var deletedSub = stripeEvent.Data.Object as Subscription;
+            await HandleSubscriptionCancelled(deletedSub);
+            break;
+
+        case "invoice.payment_succeeded":
+            var invoice = stripeEvent.Data.Object as Invoice;
+            await HandlePaymentSucceeded(invoice);
+            break;
+
+        case "invoice.payment_failed":
+            var failedInvoice = stripeEvent.Data.Object as Invoice;
+            await HandlePaymentFailed(failedInvoice);
+            break;
+    }
+
+    return Ok();
+}
+```
+
+## Subscription Statuses
+
+| Status | Description |
+|--------|-------------|
+| `incomplete` | Initial payment failed |
+| `incomplete_expired` | Initial payment window expired |
+| `trialing` | In trial period |
+| `active` | Payment successful, subscription active |
+| `past_due` | Payment failed, retrying |
+| `canceled` | Subscription cancelled |
+| `unpaid` | All retries failed |
+
+## Best Practices
+
+1. **Use webhooks** - Don't rely on redirect for subscription status
+2. **Handle failed payments** - Send reminders, pause access
+3. **Offer trials** - Let users try before committing
+4. **Prorate upgrades** - Fair billing when changing plans
+5. **Cancel gracefully** - Allow access until period end
+
+## Next Steps
+
+- [Stripe Payments](/docs/services/stripe-payments) - One-time payments
+- [Stripe Connect](/docs/services/stripe-connect) - Marketplace payments
+- [Invoices Module](/docs/modules/invoices) - Invoice management

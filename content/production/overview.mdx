@@ -1,0 +1,126 @@
+---
+title: Production Overview
+description: Guide to deploying AuthScape to production environments including Azure, certificates, and CORS configuration.
+---
+
+# Production Overview
+
+This section covers everything you need to deploy AuthScape to production, including CORS configuration, SSL certificates, and Azure setup.
+
+## Deployment Checklist
+
+Before going to production, ensure you've completed these steps:
+
+| Task | Description | Status |
+|------|-------------|--------|
+| [CORS Configuration](/docs/production/cors) | Configure allowed origins | Required |
+| [SSL Certificates](/docs/production/certificates) | Generate and install certificates | Required |
+| [Azure DevOps](/docs/production/azure-devops) | Set up CI/CD pipelines | Recommended |
+| [Azure Setup](/docs/production/azure-setup) | Configure Azure resources | Required for Azure |
+
+## Environment Configuration
+
+### Production appsettings
+
+Create `appsettings.Production.json`:
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=production-server;Database=authscape;...",
+    "CorsOrigins": [
+      "https://yourapp.com",
+      "https://www.yourapp.com"
+    ],
+    "BaseUrl": "https://api.yourapp.com"
+  }
+}
+```
+
+### Environment Variables
+
+For sensitive values, use environment variables or Azure Key Vault:
+
+```bash
+# Connection strings
+APPSETTINGS__DATABASECONTEXT="Server=..."
+
+# API keys
+APPSETTINGS__STRIPE__SECRETKEY="sk_live_..."
+APPSETTINGS__SENDGRID__APIKEY="SG..."
+```
+
+## Security Checklist
+
+- [ ] Use HTTPS everywhere
+- [ ] Configure proper CORS origins (no wildcards)
+- [ ] Store secrets in Key Vault, not config files
+- [ ] Enable rate limiting
+- [ ] Configure proper authentication scopes
+- [ ] Set up monitoring and alerting
+- [ ] Enable audit logging
+- [ ] Regular security updates
+
+## Infrastructure Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Azure                                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  App Service │  │  SQL Server  │  │    Key Vault         │  │
+│  │   (API)      │  │  (Database)  │  │    (Secrets)         │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│         │                  │                    │               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  Static Web  │  │    Blob      │  │   Application        │  │
+│  │  (Next.js)   │  │   Storage    │  │   Insights           │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Performance Optimization
+
+### Database
+
+- Enable connection pooling
+- Add appropriate indexes
+- Use read replicas for reporting
+- Configure query timeout limits
+
+### API
+
+- Enable response compression
+- Configure output caching
+- Use CDN for static assets
+- Implement request throttling
+
+### Frontend
+
+- Enable static asset caching
+- Use CDN for global distribution
+- Optimize images and bundles
+- Enable Brotli compression
+
+## Monitoring
+
+### Application Insights
+
+```csharp
+services.AddApplicationInsightsTelemetry(Configuration["ApplicationInsights:ConnectionString"]);
+```
+
+### Health Checks
+
+```csharp
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+```
+
+## Next Steps
+
+1. [Understanding CORS](/docs/production/cors) - Configure cross-origin requests
+2. [Generate Certificates](/docs/production/certificates) - SSL/TLS setup
+3. [Azure DevOps](/docs/production/azure-devops) - CI/CD pipelines
+4. [Azure Setup](/docs/production/azure-setup) - Cloud infrastructure

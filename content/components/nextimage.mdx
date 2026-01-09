@@ -1,0 +1,159 @@
+---
+title: NextImage
+description: Enhanced Next.js Image component with fallback image support.
+---
+
+# NextImage
+
+The NextImage component extends Next.js Image with fallback image support for handling broken images gracefully.
+
+## Features
+
+- Fallback image on error
+- Optional authentication for protected images
+- Configurable object-fit
+- All Next.js Image props supported
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `src` | string | required | Image source URL |
+| `alt` | string | required | Alt text for accessibility |
+| `width` | number | 200 | Image width in pixels |
+| `height` | number | 200 | Image height in pixels |
+| `objectFit` | string | "contain" | CSS object-fit property |
+| `enableAuth` | boolean | false | Add auth header to request |
+| `fallbackSrc` | string | - | Fallback image URL |
+
+## Usage
+
+### Basic Usage
+
+```jsx
+import { NextImage } from 'authscape/components';
+
+export default function Avatar({ user }) {
+  return (
+    <NextImage
+      src={user.avatarUrl}
+      alt={`${user.name}'s avatar`}
+      width={100}
+      height={100}
+    />
+  );
+}
+```
+
+### With Fallback
+
+```jsx
+<NextImage
+  src="/images/user-photo.jpg"
+  alt="User photo"
+  width={200}
+  height={200}
+  fallbackSrc="/images/default-avatar.png"
+/>
+```
+
+### Protected Images
+
+For images that require authentication:
+
+```jsx
+<NextImage
+  src="https://api.yourapp.com/protected/image.jpg"
+  alt="Protected image"
+  width={400}
+  height={300}
+  enableAuth={true}
+/>
+```
+
+### With Object Fit
+
+```jsx
+<NextImage
+  src="/images/banner.jpg"
+  alt="Banner"
+  width={1200}
+  height={400}
+  objectFit="cover"
+/>
+```
+
+## Configuration
+
+### Fallback Image in next.config.js
+
+Configure a default fallback image for all NextImage components:
+
+```javascript
+// next.config.js
+module.exports = {
+  images: {
+    domains: ['api.yourapp.com', 'storage.googleapis.com'],
+  },
+  publicRuntimeConfig: {
+    defaultFallbackImage: '/images/placeholder.png'
+  }
+};
+```
+
+## Implementation
+
+```jsx
+import Image from 'next/image';
+import { useState } from 'react';
+import { authService } from 'authscape';
+
+export function NextImage({
+  src,
+  alt,
+  width = 200,
+  height = 200,
+  objectFit = 'contain',
+  enableAuth = false,
+  fallbackSrc = '/images/placeholder.png',
+  ...props
+}) {
+  const [imgSrc, setImgSrc] = useState(src);
+  const [error, setError] = useState(false);
+
+  const handleError = () => {
+    if (!error) {
+      setError(true);
+      setImgSrc(fallbackSrc);
+    }
+  };
+
+  // For authenticated images, use a loader
+  const loader = enableAuth
+    ? ({ src }) => {
+        return `${src}?token=${authService().getAccessToken()}`;
+      }
+    : undefined;
+
+  return (
+    <Image
+      src={imgSrc}
+      alt={alt}
+      width={width}
+      height={height}
+      style={{ objectFit }}
+      onError={handleError}
+      loader={loader}
+      {...props}
+    />
+  );
+}
+```
+
+## Best Practices
+
+1. **Always provide alt text** - For accessibility
+2. **Use appropriate sizes** - Match the rendered size
+3. **Enable lazy loading** - Default in Next.js Image
+4. **Configure domains** - Add external domains to next.config.js
+5. **Use fallback images** - Handle broken image gracefully

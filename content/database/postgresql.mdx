@@ -1,0 +1,136 @@
+---
+title: PostgreSQL Configuration
+description: Connection string examples and configuration for PostgreSQL databases.
+---
+
+# PostgreSQL Configuration
+
+PostgreSQL is an excellent choice for cloud-native deployments and open-source environments. AuthScape fully supports PostgreSQL through the Npgsql provider.
+
+## Connection String Examples
+
+### Standard Connection
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Host=localhost;Database=authscape;Username=postgres;Password=yourpassword"
+  }
+}
+```
+
+### With Port (Non-default)
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Host=localhost;Port=5432;Database=authscape;Username=postgres;Password=yourpassword"
+  }
+}
+```
+
+### With SSL (Production)
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Host=localhost;Database=authscape;Username=postgres;Password=yourpassword;SSL Mode=Require;Trust Server Certificate=true"
+  }
+}
+```
+
+### Azure Database for PostgreSQL
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Host=yourserver.postgres.database.azure.com;Database=authscape;Username=yourusername@yourserver;Password=yourpassword;SSL Mode=Require"
+  }
+}
+```
+
+### AWS RDS PostgreSQL
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Host=yourinstance.region.rds.amazonaws.com;Database=authscape;Username=postgres;Password=yourpassword;SSL Mode=Require"
+  }
+}
+```
+
+## Connection String Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `Host` | Server hostname | `localhost`, `db.example.com` |
+| `Port` | Port number (default 5432) | `5432` |
+| `Database` | Database name | `authscape` |
+| `Username` | PostgreSQL username | `postgres` |
+| `Password` | User password | `mypassword` |
+| `SSL Mode` | SSL connection mode | `Disable`, `Prefer`, `Require` |
+| `Trust Server Certificate` | Trust self-signed certs | `true`, `false` |
+
+## SSL Modes
+
+| Mode | Description |
+|------|-------------|
+| `Disable` | No SSL (not recommended for production) |
+| `Prefer` | Use SSL if available |
+| `Require` | Require SSL connection |
+| `VerifyCA` | Require SSL and verify server certificate |
+| `VerifyFull` | Require SSL, verify cert, and hostname |
+
+## Features
+
+### Retry Policy
+
+PostgreSQL connections include automatic retry:
+
+```csharp
+npgsqlOptions.EnableRetryOnFailure(
+    maxRetryCount: 10,
+    maxRetryDelay: TimeSpan.FromSeconds(30),
+    errorCodesToAdd: null);
+```
+
+### Connection Pooling
+
+Npgsql includes connection pooling by default:
+
+```
+Pooling=true;Minimum Pool Size=5;Maximum Pool Size=100;
+```
+
+## Best Practices
+
+1. **Always use SSL** in production (`SSL Mode=Require`)
+2. **Use strong passwords** and limit user permissions
+3. **Enable connection pooling** for better performance
+4. **Use environment variables** for credentials
+5. **Consider read replicas** for read-heavy workloads
+
+## Creating the Database
+
+```sql
+-- Create the database
+CREATE DATABASE authscape;
+
+-- Create a user
+CREATE USER authscape_user WITH PASSWORD 'your_password';
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON DATABASE authscape TO authscape_user;
+```
+
+## Docker Development Setup
+
+Quick PostgreSQL setup with Docker:
+
+```bash
+docker run --name authscape-postgres \
+  -e POSTGRES_PASSWORD=yourpassword \
+  -e POSTGRES_DB=authscape \
+  -p 5432:5432 \
+  -d postgres:16
+```

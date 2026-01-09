@@ -1,0 +1,247 @@
+---
+title: Datatable
+description: Server-side paginated table using react-data-table-component.
+---
+
+# Datatable
+
+The Datatable component provides server-side pagination using react-data-table-component for displaying tabular data.
+
+## Features
+
+- Server-side pagination
+- Custom columns
+- Expandable rows
+- Loading indicator
+- GET or POST requests
+- Custom styling
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `url` | string | required | API endpoint |
+| `columns` | array | required | Column definitions |
+| `title` | string | - | Table title |
+| `pageLength` | number | 10 | Rows per page |
+| `params` | object | {} | Query parameters |
+| `methodType` | string | "get" | "get" or "post" |
+| `returnResult` | function | - | Callback for row data |
+| `options` | object | {} | Additional DataTable options |
+
+## Basic Usage
+
+```jsx
+import { Datatable } from 'authscape/components';
+
+const columns = [
+  { name: 'Name', selector: row => row.name, sortable: true },
+  { name: 'Email', selector: row => row.email },
+  { name: 'Status', selector: row => row.status }
+];
+
+export default function UserTable() {
+  return (
+    <Datatable
+      url="/api/Users/GetAll"
+      columns={columns}
+      title="Users"
+      pageLength={25}
+    />
+  );
+}
+```
+
+## With Parameters
+
+```jsx
+<Datatable
+  url="/api/Orders/GetByStatus"
+  columns={orderColumns}
+  params={{
+    status: 'pending',
+    customerId: customerId
+  }}
+  methodType="post"
+  pageLength={50}
+/>
+```
+
+## Column Configuration
+
+```jsx
+const columns = [
+  // Basic column
+  {
+    name: 'ID',
+    selector: row => row.id,
+    width: '80px'
+  },
+
+  // Sortable column
+  {
+    name: 'Name',
+    selector: row => row.name,
+    sortable: true
+  },
+
+  // Formatted column
+  {
+    name: 'Price',
+    selector: row => row.price,
+    format: row => `$${row.price.toFixed(2)}`
+  },
+
+  // Custom cell
+  {
+    name: 'Status',
+    cell: row => (
+      <Chip
+        label={row.status}
+        color={row.status === 'active' ? 'success' : 'default'}
+        size="small"
+      />
+    )
+  },
+
+  // Actions
+  {
+    name: 'Actions',
+    cell: row => (
+      <Button size="small" onClick={() => handleView(row.id)}>
+        View
+      </Button>
+    ),
+    button: true
+  }
+];
+```
+
+## Expandable Rows
+
+```jsx
+const ExpandedComponent = ({ data }) => (
+  <div style={{ padding: '10px 20px' }}>
+    <p><strong>Details:</strong></p>
+    <p>Created: {data.createdAt}</p>
+    <p>Description: {data.description}</p>
+  </div>
+);
+
+<Datatable
+  url="/api/Products/GetAll"
+  columns={columns}
+  options={{
+    expandableRows: true,
+    expandableRowsComponent: ExpandedComponent
+  }}
+/>
+```
+
+## Getting Row Data
+
+```jsx
+export default function SelectableTable() {
+  const handleRowsSelected = (rows) => {
+    console.log('Selected rows:', rows);
+  };
+
+  return (
+    <Datatable
+      url="/api/Items/GetAll"
+      columns={columns}
+      returnResult={handleRowsSelected}
+      options={{
+        selectableRows: true,
+        selectableRowsHighlight: true
+      }}
+    />
+  );
+}
+```
+
+## Custom Styling
+
+```jsx
+const customStyles = {
+  headRow: {
+    style: {
+      backgroundColor: '#1976d2',
+      color: 'white'
+    }
+  },
+  rows: {
+    style: {
+      minHeight: '50px'
+    },
+    highlightOnHoverStyle: {
+      backgroundColor: '#f5f5f5'
+    }
+  }
+};
+
+<Datatable
+  url="/api/Data/GetAll"
+  columns={columns}
+  options={{
+    customStyles
+  }}
+/>
+```
+
+## Backend API Format
+
+```csharp
+[HttpGet("GetAll")]
+public async Task<IActionResult> GetAll(int page = 1, int pageSize = 10)
+{
+    var query = _context.Items.AsQueryable();
+
+    var totalCount = await query.CountAsync();
+
+    var data = await query
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Ok(new
+    {
+        data,
+        totalCount,
+        page,
+        pageSize
+    });
+}
+```
+
+## Conditional Row Styling
+
+```jsx
+const conditionalRowStyles = [
+  {
+    when: row => row.status === 'overdue',
+    style: {
+      backgroundColor: '#ffebee'
+    }
+  },
+  {
+    when: row => row.priority === 'high',
+    style: {
+      fontWeight: 'bold'
+    }
+  }
+];
+
+<Datatable
+  url="/api/Tasks/GetAll"
+  columns={columns}
+  options={{
+    conditionalRowStyles
+  }}
+/>
+```
+
+## Next Steps
+
+- [EditableDatagrid](/docs/components/editable-datagrid) - Editable data grid
+- [Components Overview](/docs/components/overview) - All components

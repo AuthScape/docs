@@ -1,0 +1,102 @@
+---
+title: Environment Configs
+description: Configure AuthScape for different environments.
+---
+
+# Environment Configuration
+
+AuthScape uses environment-specific configuration files to manage settings across development, staging, and production.
+
+## Environment Files
+
+```
+appsettings.json              # Base configuration
+appsettings.Development.json  # Development overrides
+appsettings.Staging.json      # Staging overrides
+appsettings.Production.json   # Production overrides
+```
+
+## Setting the Environment
+
+### Via Environment Variable
+
+```bash
+# Windows
+set ASPNETCORE_ENVIRONMENT=Development
+
+# Linux/Mac
+export ASPNETCORE_ENVIRONMENT=Development
+```
+
+### Via launchSettings.json
+
+```json
+{
+  "profiles": {
+    "Development": {
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+```
+
+## Development Configuration
+
+`appsettings.Development.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost;Database=AuthScape_Dev;Trusted_Connection=True"
+  },
+  "AppSettings": {
+    "BaseUri": "https://localhost:5001",
+    "EnableDetailedErrors": true
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug"
+    }
+  }
+}
+```
+
+## Production Configuration
+
+`appsettings.Production.json`:
+
+```json
+{
+  "AppSettings": {
+    "EnableDetailedErrors": false
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning"
+    }
+  }
+}
+```
+
+## Checking Environment in Code
+
+```csharp
+public void Configure(IWebHostEnvironment env)
+{
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+    else
+    {
+        app.UseExceptionHandler("/Error");
+    }
+}
+```
+
+## Next Steps
+
+- [User Secrets](/docs/configuration/user-secrets)
+- [Environment Variables](/docs/configuration/environment-vars)

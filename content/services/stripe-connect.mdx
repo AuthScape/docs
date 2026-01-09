@@ -1,0 +1,325 @@
+---
+title: Stripe Connect
+description: Enable marketplace payments with Stripe Connect in AuthScape.
+---
+
+# Stripe Connect
+
+AuthScape includes Stripe Connect integration for marketplace and platform payments, allowing you to facilitate payments between your users.
+
+## Configuration
+
+Stripe Connect uses the same configuration as Stripe Payments:
+
+```json
+{
+  "AppSettings": {
+    "Stripe": {
+      "SecretKey": "sk_test_xxx",
+      "PublishableKey": "pk_test_xxx",
+      "SigningSecret": "whsec_xxx"
+    }
+  }
+}
+```
+
+## Service Interface
+
+```csharp
+public interface IStripeConnectService
+{
+    Task<string> SetupStripeConnect(SignedInUser signedInUser, string returnBaseUrl);
+    Task<StripeConnectAccount?> GetStripeConnectStatus(SignedInUser signedInUser);
+    Task<string> CreateConnectedAccount(string email, string country = "US");
+    Task<AccountLink> CreateAccountLink(string accountId, string returnUrl, string refreshUrl);
+    Task<Transfer> TransferToConnectedAccount(string accountId, long amount, string currency = "usd");
+}
+```
+
+## Setting Up Connect Accounts
+
+### Backend Controller
+
+```csharp
+[HttpGet("SetupStripeConnect")]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public async Task<IActionResult> SetupStripeConnect()
+{
+    var user = _userManagementService.GetSignedInUser();
+    var returnBaseUrl = $"{Request.Scheme}://{Request.Host}";
+
+    var onboardingUrl = await _stripeConnectService.SetupStripeConnect(user, returnBaseUrl);
+
+    return Ok(new { url = onboardingUrl });
+}
+
+[HttpGet("GetStripeConnectStatus")]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public async Task<IActionResult> GetStripeConnectStatus()
+{
+    var user = _userManagementService.GetSignedInUser();
+    var status = await _stripeConnectService.GetStripeConnectStatus(user);
+
+    return Ok(status);
+}
+```
+
+### Implementation
+
+```csharp
+public class StripeConnectService : IStripeConnectService
+{
+    public async Task<string> SetupStripeConnect(SignedInUser signedInUser, string returnBaseUrl)
+    {
+        // Create or get existing connected account
+        var company = await _context.Companies.FindAsync(signedInUser.CompanyId);
+
+        if (string.IsNullOrEmpty(company.StripeConnectAccountId))
+        {
+            // Create new connected account
+            var accountService = new AccountService();
+            var account = await accountService.CreateAsync(new AccountCreateOptions
+            {
+                Type = "express",
+                Country = "US",
+                Email = signedInUser.Email,
+                Capabilities = new AccountCapabilitiesOptions
+                {
+                    CardPayments = new AccountCapabilitiesCardPaymentsOptions { Requested = true },
+                    Transfers = new AccountCapabilitiesTransfersOptions { Requested = true }
+                }
+            });
+
+            company.StripeConnectAccountId = account.Id;
+            await _context.SaveChangesAsync();
+        }
+
+        // Create account link for onboarding
+        var accountLinkService = new AccountLinkService();
+        var accountLink = await accountLinkService.CreateAsync(new AccountLinkCreateOptions
+        {
+            Account = company.StripeConnectAccountId,
+            RefreshUrl = $"{returnBaseUrl}/stripe-connect/refresh",
+            ReturnUrl = $"{returnBaseUrl}/stripe-connect/complete",
+            Type = "account_onboarding"
+        });
+
+        return accountLink.Url;
+    }
+
+    public async Task<StripeConnectAccount?> GetStripeConnectStatus(SignedInUser signedInUser)
+    {
+        var company = await _context.Companies.FindAsync(signedInUser.CompanyId);
+
+        if (string.IsNullOrEmpty(company?.StripeConnectAccountId))
+            return null;
+
+        var accountService = new AccountService();
+        var account = await accountService.GetAsync(company.StripeConnectAccountId);
+
+        return new StripeConnectAccount
+        {
+            AccountId = account.Id,
+            ChargesEnabled = account.ChargesEnabled,
+            PayoutsEnabled = account.PayoutsEnabled,
+            DetailsSubmitted = account.DetailsSubmitted,
+            BusinessType = account.BusinessType
+        };
+    }
+}
+```
+
+## Frontend Integration
+
+### Start Onboarding
+
+```jsx
+import { apiService } from 'authscape';
+import { StripeConnect } from 'authscape/components/stripe';
+
+export default function StripeConnectSetup() {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    loadStatus();
+  }, []);
+
+  async function loadStatus() {
+    const result = await apiService().get('/Payment/GetStripeConnectStatus');
+    setStatus(result);
+  }
+
+  async function startOnboarding() {
+    const { url } = await apiService().get('/Payment/SetupStripeConnect');
+    window.location.href = url;
+  }
+
+  if (status?.chargesEnabled) {
+    return (
+      <div>
+        <h2>Stripe Connect Active</h2>
+        <p>You can receive payments!</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2>Set Up Payments</h2>
+      <p>Connect your bank account to receive payments.</p>
+      <button onClick={startOnboarding}>Connect with Stripe</button>
+    </div>
+  );
+}
+```
+
+### Using the StripeConnect Component
+
+```jsx
+import { StripeConnectComponent } from 'authscape/components/stripe';
+
+export default function PaymentSettings() {
+  return (
+    <StripeConnectComponent
+      onComplete={(status) => {
+        console.log('Connect status:', status);
+      }}
+    />
+  );
+}
+```
+
+## Processing Marketplace Payments
+
+### Direct Charges
+
+Charge on behalf of connected account:
+
+```csharp
+public async Task<PaymentIntent> CreateDirectCharge(
+    string connectedAccountId,
+    long amount,
+    string paymentMethodId)
+{
+    var options = new PaymentIntentCreateOptions
+    {
+        Amount = amount,
+        Currency = "usd",
+        PaymentMethod = paymentMethodId,
+        Confirm = true,
+        ApplicationFeeAmount = (long)(amount * 0.10)  // 10% platform fee
+    };
+
+    var requestOptions = new RequestOptions
+    {
+        StripeAccount = connectedAccountId
+    };
+
+    var service = new PaymentIntentService();
+    return await service.CreateAsync(options, requestOptions);
+}
+```
+
+### Destination Charges
+
+```csharp
+public async Task<PaymentIntent> CreateDestinationCharge(
+    string connectedAccountId,
+    long amount,
+    string paymentMethodId)
+{
+    var options = new PaymentIntentCreateOptions
+    {
+        Amount = amount,
+        Currency = "usd",
+        PaymentMethod = paymentMethodId,
+        Confirm = true,
+        TransferData = new PaymentIntentTransferDataOptions
+        {
+            Destination = connectedAccountId,
+            Amount = (long)(amount * 0.90)  // 90% to connected account
+        }
+    };
+
+    var service = new PaymentIntentService();
+    return await service.CreateAsync(options);
+}
+```
+
+### Separate Transfers
+
+```csharp
+public async Task<Transfer> TransferToConnectedAccount(
+    string connectedAccountId,
+    long amount,
+    string currency = "usd")
+{
+    var options = new TransferCreateOptions
+    {
+        Amount = amount,
+        Currency = currency,
+        Destination = connectedAccountId,
+        TransferGroup = $"ORDER_{DateTime.UtcNow.Ticks}"
+    };
+
+    var service = new TransferService();
+    return await service.CreateAsync(options);
+}
+```
+
+## Connect Account Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| Express | Simplified onboarding, Stripe handles KYC | Most marketplaces |
+| Standard | Users manage their own Stripe accounts | Advanced users |
+| Custom | Full control over onboarding | Complex platforms |
+
+## Webhook Events
+
+Handle Connect-specific events:
+
+```csharp
+[HttpPost("stripe/connect-webhook")]
+public async Task<IActionResult> ConnectWebhook()
+{
+    var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+    var signature = Request.Headers["Stripe-Signature"];
+
+    var stripeEvent = EventUtility.ConstructEvent(json, signature, _connectWebhookSecret);
+
+    switch (stripeEvent.Type)
+    {
+        case "account.updated":
+            var account = stripeEvent.Data.Object as Account;
+            await HandleAccountUpdated(account);
+            break;
+
+        case "payout.paid":
+            var payout = stripeEvent.Data.Object as Payout;
+            await HandlePayoutCompleted(payout);
+            break;
+
+        case "transfer.created":
+            var transfer = stripeEvent.Data.Object as Transfer;
+            await HandleTransferCreated(transfer);
+            break;
+    }
+
+    return Ok();
+}
+```
+
+## Best Practices
+
+1. **Use Express accounts** - Simplest onboarding for most use cases
+2. **Handle incomplete onboarding** - Users may abandon the process
+3. **Monitor account status** - Check `charges_enabled` before accepting payments
+4. **Set up Connect webhooks** - Separate from regular payment webhooks
+5. **Calculate fees correctly** - Document platform fees clearly
+
+## Next Steps
+
+- [Stripe Payments](/docs/services/stripe-payments) - Basic payment processing
+- [Stripe Subscriptions](/docs/services/stripe-subscriptions) - Recurring billing
+- [Invoices Module](/docs/modules/invoices) - Invoice management

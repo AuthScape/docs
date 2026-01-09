@@ -1,0 +1,298 @@
+---
+title: React (Next.js)
+description: Build web applications with Next.js and AuthScape, including PWA support and offline capabilities.
+---
+
+# React (Next.js)
+
+AuthScape provides a complete Next.js template with authentication, API integration, and Progressive Web App (PWA) support built-in.
+
+## Features
+
+- **OAuth2/OpenID Connect** - Secure authentication flow
+- **PWA Support** - Installable, offline-capable applications
+- **API Integration** - Built-in `authscape` npm package
+- **Theme Support** - Dark/light mode with MUI
+- **SSR Compatible** - Server-side rendering support
+
+## Getting Started
+
+### 1. Clone the Template
+
+The AuthScape Next.js template is located in `AuthScape.NextJS`:
+
+```bash
+cd AuthScape.NextJS
+npm install
+```
+
+### 2. Configure Environment
+
+Create `.env.local`:
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.yourapp.com
+NEXT_PUBLIC_CLIENT_ID=your-client-id
+NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000/callback
+```
+
+### 3. Run Development Server
+
+```bash
+npm run dev
+```
+
+## Authentication
+
+### Using authService
+
+The `authscape` npm package provides authentication helpers:
+
+```javascript
+import { authService } from 'authscape';
+
+// Login - redirects to auth server
+authService().login(redirectUrl, dnsRecord, deviceId);
+
+// Logout
+authService().logout(redirectUrl);
+
+// Get access token
+const token = authService().getAccessToken();
+
+// Check if authenticated
+const isLoggedIn = authService().isAuthenticated();
+```
+
+### Login Flow
+
+```javascript
+import { authService } from 'authscape';
+
+export default function LoginButton() {
+  const handleLogin = () => {
+    authService().login(
+      window.location.origin + '/dashboard',  // Redirect after login
+      window.location.hostname,                // DNS record
+      'device-uuid'                            // Device ID
+    );
+  };
+
+  return (
+    <button onClick={handleLogin}>
+      Sign In
+    </button>
+  );
+}
+```
+
+### Callback Handler
+
+```javascript
+// pages/callback.js
+import { useEffect } from 'react';
+import { authService } from 'authscape';
+import { useRouter } from 'next/router';
+
+export default function Callback() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleCallback = async () => {
+      await authService().handleCallback();
+      router.push('/dashboard');
+    };
+    handleCallback();
+  }, []);
+
+  return <div>Loading...</div>;
+}
+```
+
+## Making API Calls
+
+### Using apiService
+
+```javascript
+import { apiService } from 'authscape';
+
+// GET request
+const users = await apiService().get('/api/Users/GetAll');
+
+// POST request
+const result = await apiService().post('/api/Users/Create', {
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'john@example.com'
+});
+
+// PUT request
+await apiService().put('/api/Users/Update', {
+  id: 123,
+  firstName: 'Jane'
+});
+
+// DELETE request
+await apiService().delete('/api/Users/Delete?id=123');
+```
+
+### With Error Handling
+
+```javascript
+import { apiService } from 'authscape';
+
+async function fetchUsers() {
+  try {
+    const response = await apiService().get('/api/Users/GetAll');
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      // Token expired, redirect to login
+      authService().login(window.location.href);
+    }
+    throw error;
+  }
+}
+```
+
+## PWA Support
+
+AuthScape Next.js includes PWA configuration:
+
+### next.config.js
+
+```javascript
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+});
+
+module.exports = withPWA({
+  // Your Next.js config
+});
+```
+
+### Manifest
+
+```json
+{
+  "name": "Your App Name",
+  "short_name": "App",
+  "description": "Your app description",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#60a5fa",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+## Theme Configuration
+
+### Dark/Light Mode
+
+```javascript
+import { createContext, useContext, useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material';
+
+const ThemeContext = createContext();
+
+export function AppThemeProvider({ children }) {
+  const [mode, setMode] = useState('dark');
+
+  const theme = createTheme({
+    palette: {
+      mode,
+      primary: { main: '#60a5fa' },
+      secondary: { main: '#a78bfa' },
+    },
+  });
+
+  const toggleTheme = () => {
+    setMode(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
+  return (
+    <ThemeContext.Provider value={{ mode, toggleTheme }}>
+      <ThemeProvider theme={theme}>
+        {children}
+      </ThemeProvider>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+## Protected Routes
+
+```javascript
+import { useEffect } from 'react';
+import { authService } from 'authscape';
+import { useRouter } from 'next/router';
+
+export function withAuth(Component) {
+  return function AuthenticatedComponent(props) {
+    const router = useRouter();
+
+    useEffect(() => {
+      if (!authService().isAuthenticated()) {
+        authService().login(window.location.href);
+      }
+    }, []);
+
+    if (!authService().isAuthenticated()) {
+      return <div>Loading...</div>;
+    }
+
+    return <Component {...props} />;
+  };
+}
+
+// Usage
+export default withAuth(DashboardPage);
+```
+
+## Folder Structure
+
+```
+AuthScape.NextJS/
+├── components/
+│   ├── layout/
+│   │   ├── AppLayout.js
+│   │   ├── Header.js
+│   │   └── Sidebar.js
+│   └── common/
+│       └── ...
+├── contexts/
+│   └── ThemeContext.js
+├── pages/
+│   ├── _app.js
+│   ├── index.js
+│   ├── callback.js
+│   └── dashboard/
+│       └── index.js
+├── public/
+│   ├── manifest.json
+│   └── icons/
+├── styles/
+│   └── globals.css
+└── next.config.js
+```
+
+## Next Steps
+
+- [API Service Call Component](/docs/components/api-service-call) - Detailed API usage
+- [FileUploader Component](/docs/components/file-uploader) - File upload handling
+- [NextImage Component](/docs/components/nextimage) - Optimized images

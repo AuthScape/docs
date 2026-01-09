@@ -1,0 +1,240 @@
+---
+title: DocumentManager
+description: Complete file and folder management interface with upload, preview, and organization features.
+---
+
+# DocumentManager
+
+The DocumentManager component provides a complete file and folder management interface with drag-and-drop upload, file preview, and folder navigation.
+
+## Features
+
+- Folder navigation with breadcrumbs
+- File upload with progress
+- File preview (images)
+- Right-click context menu
+- File deletion with confirmation
+- Locked file indicators
+- Multiple grid layouts
+- Custom zero-state views
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `loadedUser` | boolean | required | User authentication flag |
+| `setIsLoading` | function | - | Loading state setter |
+| `viewDocumentType` | number | 1 | Document type filter |
+| `disablePreview` | boolean | false | Disable image preview |
+| `openToFolderId` | number | - | Initial folder ID |
+| `xs`, `sm`, `md`, `lg` | number | - | Grid breakpoints |
+| `overrideLockMessage` | string | - | Custom lock tooltip |
+| `zeroStateView` | ReactNode | - | Custom empty state |
+| `fieldId1`, `fieldId2`, `fieldId3` | any | - | Additional filters |
+
+## Basic Usage
+
+```jsx
+import { DocumentManager } from 'authscape/components';
+
+export default function FileBrowser() {
+  return (
+    <DocumentManager
+      loadedUser={true}
+      viewDocumentType={1}
+    />
+  );
+}
+```
+
+## With Loading State
+
+```jsx
+import { DocumentManager } from 'authscape/components';
+import { useState } from 'react';
+
+export default function FileManager() {
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <>
+      {loading && <LinearProgress />}
+      <DocumentManager
+        loadedUser={true}
+        setIsLoading={setLoading}
+        viewDocumentType={1}
+      />
+    </>
+  );
+}
+```
+
+## Open to Specific Folder
+
+```jsx
+<DocumentManager
+  loadedUser={true}
+  openToFolderId={123}
+  viewDocumentType={1}
+/>
+```
+
+## Custom Grid Layout
+
+```jsx
+<DocumentManager
+  loadedUser={true}
+  xs={12}
+  sm={6}
+  md={4}
+  lg={3}
+/>
+```
+
+## Custom Zero State
+
+```jsx
+<DocumentManager
+  loadedUser={true}
+  zeroStateView={
+    <Box sx={{ textAlign: 'center', py: 4 }}>
+      <FolderIcon sx={{ fontSize: 64, color: 'grey.400' }} />
+      <Typography variant="h6">No files yet</Typography>
+      <Typography color="text.secondary">
+        Upload your first file to get started
+      </Typography>
+    </Box>
+  }
+/>
+```
+
+## With Field Filters
+
+```jsx
+// Filter documents by additional fields
+<DocumentManager
+  loadedUser={true}
+  viewDocumentType={1}
+  fieldId1={projectId}
+  fieldId2={categoryId}
+/>
+```
+
+## Internal Structure
+
+The DocumentManager uses FileUploader internally:
+
+```jsx
+// Inside DocumentManager
+<FileUploader
+  refOveride={fileUploaderRef}
+  url={"/Document/UploadFile"}
+  params={{
+    viewType: viewDocumentType,
+    parentFolderId: uploadParentId
+  }}
+  multiple={true}
+  variant='custom'
+  onUploadCompleted={() => { setUpdate(!update); }}
+>
+  <Button startIcon={<PublishRoundedIcon />}>
+    Upload File(s)
+  </Button>
+</FileUploader>
+```
+
+## Backend API Endpoints
+
+The DocumentManager expects these API endpoints:
+
+### Get Files
+
+```csharp
+[HttpGet("GetFiles")]
+public async Task<IActionResult> GetFiles(
+    int viewType,
+    long? parentFolderId = null,
+    long? fieldId1 = null)
+{
+    var files = await _documentService.GetFiles(viewType, parentFolderId, fieldId1);
+    return Ok(files);
+}
+```
+
+### Upload File
+
+```csharp
+[HttpPost("UploadFile")]
+public async Task<IActionResult> UploadFile(
+    IFormFile file,
+    int viewType,
+    long? parentFolderId)
+{
+    var result = await _documentService.UploadFile(file, viewType, parentFolderId);
+    return Ok(result);
+}
+```
+
+### Create Folder
+
+```csharp
+[HttpPost("CreateFolder")]
+public async Task<IActionResult> CreateFolder([FromBody] CreateFolderRequest request)
+{
+    var folder = await _documentService.CreateFolder(request.Name, request.ParentId);
+    return Ok(folder);
+}
+```
+
+### Delete File
+
+```csharp
+[HttpDelete("DeleteFile")]
+public async Task<IActionResult> DeleteFile(long fileId)
+{
+    await _documentService.DeleteFile(fileId);
+    return Ok();
+}
+```
+
+## File Object Structure
+
+```typescript
+interface DocumentFile {
+  id: number;
+  name: string;
+  uri: string;
+  size: number;
+  contentType: string;
+  isFolder: boolean;
+  isLocked: boolean;
+  parentFolderId: number | null;
+  createdAt: string;
+  modifiedAt: string;
+}
+```
+
+## Context Menu Actions
+
+Right-click on files/folders provides:
+
+- Download
+- Rename
+- Move to folder
+- Delete
+- View details
+- Lock/Unlock (admin)
+
+## Best Practices
+
+1. **Set view types** - Organize documents by type (invoices, contracts, etc.)
+2. **Use parent folders** - Create folder hierarchy for organization
+3. **Handle locked files** - Prevent accidental deletion of important files
+4. **Custom zero states** - Guide users to upload their first file
+5. **Grid responsiveness** - Adjust columns for different screen sizes
+
+## Next Steps
+
+- [FileUploader](/docs/components/file-uploader) - Standalone upload component
+- [DropZone](/docs/components/dropzone) - Drag-and-drop zone
+- [Document Management Module](/docs/modules/document-management) - Full module docs

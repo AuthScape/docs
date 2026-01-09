@@ -1,0 +1,181 @@
+---
+title: GoogleMapsAutoComplete
+description: Address autocomplete input powered by Google Maps Places API.
+---
+
+# GoogleMapsAutoComplete
+
+The GoogleMapsAutoComplete component provides an address autocomplete input using the Google Maps Places API.
+
+## Features
+
+- Address autocomplete suggestions
+- Place details retrieval
+- Geocoding support
+- Country filtering
+- Custom styling
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | string | "" | Current input value |
+| `onChange` | function | required | Called with selected place |
+| `placeholder` | string | "Enter address" | Input placeholder |
+| `countries` | string[] | - | Restrict to countries |
+| `types` | string[] | ["address"] | Place types to search |
+| `disabled` | boolean | false | Disable the input |
+
+## Setup
+
+### 1. Get API Key
+
+Enable the Places API in Google Cloud Console and get an API key.
+
+### 2. Add Script
+
+```jsx
+// pages/_app.js
+import Script from 'next/script';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <>
+      <Script
+        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`}
+        strategy="beforeInteractive"
+      />
+      <Component {...pageProps} />
+    </>
+  );
+}
+```
+
+## Usage
+
+### Basic Usage
+
+```jsx
+import { GoogleMapsAutoComplete } from 'authscape/components';
+
+export default function AddressForm() {
+  const [address, setAddress] = useState(null);
+
+  const handleSelect = (place) => {
+    setAddress({
+      formatted: place.formatted_address,
+      lat: place.geometry.location.lat(),
+      lng: place.geometry.location.lng(),
+      components: place.address_components
+    });
+  };
+
+  return (
+    <GoogleMapsAutoComplete
+      value={address?.formatted || ''}
+      onChange={handleSelect}
+      placeholder="Search for an address"
+    />
+  );
+}
+```
+
+### With Country Restriction
+
+```jsx
+<GoogleMapsAutoComplete
+  onChange={handleSelect}
+  countries={['us', 'ca']}  // US and Canada only
+  placeholder="Enter US or Canadian address"
+/>
+```
+
+### Extract Address Components
+
+```jsx
+const handleSelect = (place) => {
+  const components = place.address_components;
+
+  const get = (type) =>
+    components.find(c => c.types.includes(type))?.long_name || '';
+
+  setFormData({
+    street: `${get('street_number')} ${get('route')}`,
+    city: get('locality'),
+    state: get('administrative_area_level_1'),
+    zip: get('postal_code'),
+    country: get('country')
+  });
+};
+```
+
+## Implementation
+
+```jsx
+import { useEffect, useRef, useState } from 'react';
+import { TextField } from '@mui/material';
+
+export function GoogleMapsAutoComplete({
+  value,
+  onChange,
+  placeholder = 'Enter address',
+  countries,
+  types = ['address'],
+  disabled = false
+}) {
+  const inputRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  const [inputValue, setInputValue] = useState(value);
+
+  useEffect(() => {
+    if (!window.google || !inputRef.current) return;
+
+    const options = {
+      types,
+      fields: ['formatted_address', 'geometry', 'address_components']
+    };
+
+    if (countries) {
+      options.componentRestrictions = { country: countries };
+    }
+
+    autocompleteRef.current = new window.google.maps.places.Autocomplete(
+      inputRef.current,
+      options
+    );
+
+    autocompleteRef.current.addListener('place_changed', () => {
+      const place = autocompleteRef.current.getPlace();
+      if (place.geometry) {
+        setInputValue(place.formatted_address);
+        onChange(place);
+      }
+    });
+
+    return () => {
+      if (autocompleteRef.current) {
+        window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+      }
+    };
+  }, [countries, types, onChange]);
+
+  return (
+    <TextField
+      inputRef={inputRef}
+      value={inputValue}
+      onChange={(e) => setInputValue(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      fullWidth
+    />
+  );
+}
+```
+
+## Best Practices
+
+1. **Restrict countries** - Improves relevance and performance
+2. **Handle no selection** - User may type without selecting
+3. **Store components** - Parse address_components for forms
+4. **Cache results** - Avoid redundant API calls
+5. **Handle loading** - Show loading state for API initialization

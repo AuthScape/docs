@@ -1,0 +1,98 @@
+---
+title: Push Notifications
+description: Mobile and web push notifications for real-time user engagement.
+---
+
+# Push Notifications
+
+The Push Notifications module enables sending push notifications to web browsers and mobile devices.
+
+## Features
+
+- Web push notifications
+- Mobile push (iOS/Android via FCM)
+- Notification templates
+- Scheduled notifications
+- User preferences
+- Analytics and tracking
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "PushNotifications": {
+      "FCMServerKey": "your-fcm-key",
+      "VapidPublicKey": "your-vapid-public-key",
+      "VapidPrivateKey": "your-vapid-private-key"
+    }
+  }
+}
+```
+
+## Usage
+
+### Register Device
+
+```javascript
+import { apiService } from 'authscape';
+
+// Request permission and get subscription
+const registration = await navigator.serviceWorker.register('/sw.js');
+const subscription = await registration.pushManager.subscribe({
+  userVisibleOnly: true,
+  applicationServerKey: process.env.NEXT_PUBLIC_VAPID_KEY
+});
+
+// Register with backend
+await apiService().post('/api/PushNotifications/Register', {
+  subscription: JSON.stringify(subscription),
+  platform: 'web'
+});
+```
+
+### Send Notification
+
+```javascript
+await apiService().post('/api/PushNotifications/Send', {
+  userId: 123,  // or use 'topic' for broadcast
+  title: 'New Message',
+  body: 'You have a new message from John',
+  data: { url: '/messages/456' }
+});
+```
+
+### Service Worker
+
+```javascript
+// public/sw.js
+self.addEventListener('push', (event) => {
+  const data = event.data.json();
+  self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: '/icon-192x192.png',
+    data: data.data
+  });
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  if (event.notification.data?.url) {
+    clients.openWindow(event.notification.data.url);
+  }
+});
+```
+
+## User Preferences
+
+```javascript
+// Get user's notification preferences
+const prefs = await apiService().get('/api/PushNotifications/Preferences');
+
+// Update preferences
+await apiService().put('/api/PushNotifications/Preferences', {
+  marketingNotifications: false,
+  messageNotifications: true,
+  reminderNotifications: true
+});
+```

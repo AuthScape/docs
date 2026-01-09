@@ -1,0 +1,362 @@
+---
+title: Profile Management
+description: Edit user profiles including photo upload, personal info, and settings in AuthScape.
+---
+
+# Profile Management
+
+AuthScape provides comprehensive profile management capabilities for both administrators and end users.
+
+## Updating User Profile
+
+### Backend Controller
+
+```csharp
+[Route("api/[controller]")]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class ProfileController : ControllerBase
+{
+    private readonly UserManager<AppUser> _userManager;
+    private readonly IUserManagementService _userManagementService;
+
+    [HttpPut("Update")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
+    {
+        var signedInUser = _userManagementService.GetSignedInUser();
+        var user = await _userManager.FindByIdAsync(signedInUser.Id.ToString());
+
+        if (user == null)
+            return NotFound();
+
+        user.FirstName = request.FirstName;
+        user.LastName = request.LastName;
+        user.PhoneNumber = request.PhoneNumber;
+        user.TimeZoneId = request.TimeZoneId;
+        user.Culture = request.Culture;
+
+        var result = await _userManager.UpdateAsync(user);
+
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        return Ok(new { message = "Profile updated" });
+    }
+}
+
+public class UpdateProfileRequest
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string? PhoneNumber { get; set; }
+    public string? TimeZoneId { get; set; }
+    public string? Culture { get; set; }
+}
+```
+
+### Frontend Profile Update
+
+```javascript
+import { apiService } from 'authscape';
+
+// Update profile
+async function updateProfile(profileData) {
+  const response = await apiService().put('/Profile/Update', {
+    firstName: profileData.firstName,
+    lastName: profileData.lastName,
+    phoneNumber: profileData.phoneNumber,
+    timeZoneId: profileData.timeZoneId,
+    culture: profileData.culture
+  });
+
+  if (response.status === 200) {
+    console.log('Profile updated successfully');
+  }
+}
+```
+
+## Profile Photo Upload
+
+### Using FileUploader Component
+
+```jsx
+import { FileUploader } from 'authscape/components';
+import { useState } from 'react';
+
+export default function ProfilePhoto({ currentPhoto }) {
+  const [photoUrl, setPhotoUrl] = useState(currentPhoto);
+
+  return (
+    <div>
+      <img
+        src={photoUrl || '/default-avatar.png'}
+        alt="Profile"
+        style={{ width: 100, height: 100, borderRadius: '50%' }}
+      />
+
+      <FileUploader
+        url="/Profile/UploadPhoto"
+        accept="image/*"
+        variant="custom"
+        onUploadCompleted={(result) => {
+          setPhotoUrl(result.photoUri);
+        }}
+      >
+        <button>Change Photo</button>
+      </FileUploader>
+    </div>
+  );
+}
+```
+
+### Backend Photo Upload
+
+```csharp
+[HttpPost("UploadPhoto")]
+public async Task<IActionResult> UploadPhoto(IFormFile file)
+{
+    var signedInUser = _userManagementService.GetSignedInUser();
+    var user = await _userManager.FindByIdAsync(signedInUser.Id.ToString());
+
+    if (user == null)
+        return NotFound();
+
+    // Upload to Azure Blob Storage
+    var blobClient = _blobContainerClient.GetBlobClient($"profiles/{user.Id}/{file.FileName}");
+    await blobClient.UploadAsync(file.OpenReadStream(), overwrite: true);
+
+    // Update user photo URI
+    user.PhotoUri = blobClient.Uri.ToString();
+    await _userManager.UpdateAsync(user);
+
+    return Ok(new { photoUri = user.PhotoUri });
+}
+```
+
+## Profile Form Component
+
+```jsx
+import { useState, useEffect } from 'react';
+import { TextField, Button, Box, Grid, MenuItem, Select } from '@mui/material';
+import { apiService } from 'authscape';
+import { AutoSaveTextField } from 'authscape/components';
+
+export default function ProfileForm() {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  async function loadProfile() {
+    const user = await apiService().get('/UserManagement/Get');
+    setProfile(user);
+    setLoading(false);
+  }
+
+  async function handleSave() {
+    await apiService().put('/Profile/Update', profile);
+    alert('Profile saved!');
+  }
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="First Name"
+            value={profile.firstName}
+            onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
+            fullWidth
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Last Name"
+            value={profile.lastName}
+            onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
+            fullWidth
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Email"
+            value={profile.email}
+            disabled
+            fullWidth
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Phone"
+            value={profile.phoneNumber || ''}
+            onChange={(e) => setProfile({ ...profile, phoneNumber: e.target.value })}
+            fullWidth
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <Select
+            label="Time Zone"
+            value={profile.timeZoneId || ''}
+            onChange={(e) => setProfile({ ...profile, timeZoneId: e.target.value })}
+            fullWidth
+          >
+            <MenuItem value="America/New_York">Eastern Time</MenuItem>
+            <MenuItem value="America/Chicago">Central Time</MenuItem>
+            <MenuItem value="America/Denver">Mountain Time</MenuItem>
+            <MenuItem value="America/Los_Angeles">Pacific Time</MenuItem>
+            <MenuItem value="UTC">UTC</MenuItem>
+          </Select>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Button variant="contained" onClick={handleSave}>
+            Save Profile
+          </Button>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+```
+
+## Auto-Save Profile Fields
+
+Use `AutoSaveTextField` for automatic saving:
+
+```jsx
+import { AutoSaveTextField } from 'authscape/components';
+import { apiService } from 'authscape';
+
+export default function AutoSaveProfile({ userId }) {
+  const handleFieldSave = async (fieldName, value) => {
+    await apiService().put('/Profile/UpdateField', {
+      userId,
+      fieldName,
+      value
+    });
+  };
+
+  return (
+    <div>
+      <AutoSaveTextField
+        label="Bio"
+        value={user.bio}
+        isMultiLine={true}
+        rows={4}
+        timeout={2000}
+        fullWidth
+        onChanged={(value) => handleFieldSave('bio', value)}
+      />
+
+      <AutoSaveTextField
+        label="Job Title"
+        value={user.jobTitle}
+        timeout={1500}
+        fullWidth
+        onChanged={(value) => handleFieldSave('jobTitle', value)}
+      />
+    </div>
+  );
+}
+```
+
+## Change Password
+
+### Frontend
+
+```javascript
+import { apiService } from 'authscape';
+
+async function changePassword(currentPassword, newPassword) {
+  const response = await apiService().post('/Profile/ChangePassword', {
+    currentPassword,
+    newPassword
+  });
+
+  if (response.status === 200) {
+    alert('Password changed successfully');
+  } else {
+    alert('Failed to change password: ' + response.data.message);
+  }
+}
+```
+
+### Backend
+
+```csharp
+[HttpPost("ChangePassword")]
+public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+{
+    var signedInUser = _userManagementService.GetSignedInUser();
+    var user = await _userManager.FindByIdAsync(signedInUser.Id.ToString());
+
+    if (user == null)
+        return NotFound();
+
+    var result = await _userManager.ChangePasswordAsync(
+        user,
+        request.CurrentPassword,
+        request.NewPassword
+    );
+
+    if (!result.Succeeded)
+        return BadRequest(new { message = result.Errors.First().Description });
+
+    return Ok(new { message = "Password changed successfully" });
+}
+```
+
+## Manage Account (IDP Redirect)
+
+Redirect users to the Identity Provider's account management page:
+
+```javascript
+import { authService } from 'authscape';
+
+// Redirect to IDP account management
+function manageAccount() {
+  authService().manageAccount();
+  // Redirects to: {authorityUri}/Identity/Account/Manage
+}
+```
+
+This provides access to:
+
+- Email change
+- Password change
+- Two-factor authentication setup
+- External login providers
+- Personal data download
+- Account deletion
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/UserManagement/Get` | GET | Get current user profile |
+| `/api/Profile/Update` | PUT | Update profile info |
+| `/api/Profile/UploadPhoto` | POST | Upload profile photo |
+| `/api/Profile/ChangePassword` | POST | Change password |
+| `/api/Profile/UpdateField` | PUT | Update single field |
+| `/Identity/Account/Manage` | GET | IDP account management |
+
+## Best Practices
+
+1. **Validate input** - Server-side validation for all profile updates
+2. **Resize images** - Compress and resize profile photos before storage
+3. **Auto-save** - Use AutoSaveTextField for long text fields
+4. **Confirm password changes** - Require current password
+5. **Audit changes** - Log profile modifications for compliance
+
+## Next Steps
+
+- [Authentication Flows](/docs/user-profile/authentication-flows) - Login/logout/signup
+- [Claims & Identity](/docs/user-profile/claims-identity) - JWT token claims
+- [FileUploader](/docs/components/file-uploader) - File upload component

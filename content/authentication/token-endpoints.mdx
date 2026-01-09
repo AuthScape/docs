@@ -1,0 +1,126 @@
+---
+title: Token Endpoints
+description: OAuth 2.0 token endpoints in AuthScape.
+---
+
+# Token Endpoints
+
+AuthScape exposes standard OAuth 2.0 token endpoints via OpenIddict.
+
+## Available Endpoints
+
+| Endpoint | Path | Purpose |
+|----------|------|---------|
+| Authorization | `/connect/authorize` | Start OAuth flow |
+| Token | `/connect/token` | Exchange code for tokens |
+| UserInfo | `/connect/userinfo` | Get user claims |
+| Logout | `/connect/logout` | End session |
+| Introspect | `/connect/introspect` | Validate tokens |
+
+## Token Endpoint
+
+Exchange authorization code for tokens:
+
+```http
+POST /connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&code=AUTH_CODE_HERE
+&redirect_uri=https://localhost:3000/callback
+&client_id=web-app
+&client_secret=your-secret
+&code_verifier=PKCE_VERIFIER
+```
+
+Response:
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOiJSUzI1NiIs...",
+  "id_token": "eyJhbGciOiJSUzI1NiIs...",
+  "scope": "openid email profile api1"
+}
+```
+
+## Refresh Token
+
+Get new access token:
+
+```http
+POST /connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&refresh_token=REFRESH_TOKEN_HERE
+&client_id=web-app
+&client_secret=your-secret
+```
+
+## Client Credentials
+
+For service-to-service authentication:
+
+```http
+POST /connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=service-app
+&client_secret=service-secret
+&scope=api1
+```
+
+## UserInfo Endpoint
+
+Get user claims with access token:
+
+```http
+GET /connect/userinfo
+Authorization: Bearer ACCESS_TOKEN
+```
+
+Response:
+
+```json
+{
+  "sub": "12345",
+  "email": "user@example.com",
+  "email_verified": true,
+  "given_name": "John",
+  "family_name": "Doe"
+}
+```
+
+## Token Introspection
+
+Validate a token:
+
+```http
+POST /connect/introspect
+Content-Type: application/x-www-form-urlencoded
+
+token=ACCESS_TOKEN_HERE
+&client_id=web-app
+&client_secret=your-secret
+```
+
+Response:
+
+```json
+{
+  "active": true,
+  "sub": "12345",
+  "client_id": "web-app",
+  "scope": "openid email profile api1",
+  "exp": 1704067200
+}
+```
+
+## Next Steps
+
+- [Authorization Code Flow](/docs/authentication/authorization-code)
+- [Client Credentials](/docs/authentication/client-credentials)

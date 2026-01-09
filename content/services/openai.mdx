@@ -1,0 +1,309 @@
+---
+title: OpenAI / ChatGPT
+description: Integrate OpenAI's GPT models for AI-powered features in AuthScape.
+---
+
+# OpenAI / ChatGPT
+
+AuthScape includes OpenAI integration for AI-powered content generation, translation, and more.
+
+## Configuration
+
+Add OpenAI configuration to `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "OpenAI": {
+      "APIKey": "sk-xxx"
+    }
+  }
+}
+```
+
+## Service Interface
+
+```csharp
+public interface IOpenAIService
+{
+    Task<string> GenerateRawMessage(List<ChatMessage> messages);
+    Task<string> GenerateWebPage(string aboutWebPage);
+    Task<string> TranslateMessage(string message);
+    Task<string> GeneratePhoto(string message);
+    Task<string> KeywordExtraction(string message);
+}
+```
+
+## Implementation
+
+```csharp
+public class OpenAIService : IOpenAIService
+{
+    private readonly AppSettings _appSettings;
+    private readonly OpenAIClient _client;
+
+    public OpenAIService(IOptions<AppSettings> appSettings)
+    {
+        _appSettings = appSettings.Value;
+
+        if (!string.IsNullOrEmpty(_appSettings.OpenAI?.APIKey))
+        {
+            _client = new OpenAIClient(_appSettings.OpenAI.APIKey);
+        }
+    }
+
+    public async Task<string> GenerateRawMessage(List<ChatMessage> messages)
+    {
+        var chatClient = _client.GetChatClient("gpt-4");
+
+        var response = await chatClient.CompleteChatAsync(messages);
+
+        return response.Value.Content[0].Text;
+    }
+
+    public async Task<string> GenerateWebPage(string aboutWebPage)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage("You are a web designer who creates HTML/CSS code."),
+            new UserChatMessage($"Create a modern, responsive web page for: {aboutWebPage}")
+        };
+
+        return await GenerateRawMessage(messages);
+    }
+
+    public async Task<string> TranslateMessage(string message)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage("You are a translator. Translate the given text to English if not English, or to Spanish if already English."),
+            new UserChatMessage(message)
+        };
+
+        return await GenerateRawMessage(messages);
+    }
+
+    public async Task<string> KeywordExtraction(string message)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage("Extract keywords from the given text. Return as comma-separated list."),
+            new UserChatMessage(message)
+        };
+
+        return await GenerateRawMessage(messages);
+    }
+}
+```
+
+## Service Registration
+
+```csharp
+// In Startup.cs
+services.AddScoped<IOpenAIService, OpenAIService>();
+```
+
+## Controller Usage
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class GenerateController : ControllerBase
+{
+    private readonly IOpenAIService _openAIService;
+
+    [HttpPost]
+    public async Task<IActionResult> Chat([FromBody] ChatRequest request)
+    {
+        var messages = request.Messages.Select(m => m.Role == "user"
+            ? new UserChatMessage(m.Content)
+            : new AssistantChatMessage(m.Content) as ChatMessage).ToList();
+
+        messages.Insert(0, new SystemChatMessage(request.SystemPrompt ?? "You are a helpful assistant."));
+
+        var response = await _openAIService.GenerateRawMessage(messages);
+
+        return Ok(new { response });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Translate([FromBody] TranslateRequest request)
+    {
+        var translation = await _openAIService.TranslateMessage(request.Text);
+        return Ok(new { translation });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> ExtractKeywords([FromBody] KeywordRequest request)
+    {
+        var keywords = await _openAIService.KeywordExtraction(request.Text);
+        return Ok(new { keywords = keywords.Split(',').Select(k => k.Trim()) });
+    }
+}
+```
+
+## Frontend Usage
+
+```javascript
+import { apiService } from 'authscape';
+
+// Chat with AI
+async function chat(messages, systemPrompt) {
+  const { response } = await apiService().post('/Generate/Chat', {
+    messages,
+    systemPrompt
+  });
+  return response;
+}
+
+// Translate text
+async function translate(text) {
+  const { translation } = await apiService().post('/Generate/Translate', { text });
+  return translation;
+}
+
+// Extract keywords
+async function extractKeywords(text) {
+  const { keywords } = await apiService().post('/Generate/ExtractKeywords', { text });
+  return keywords;
+}
+```
+
+## Generate Service Module Features
+
+AuthScape's Generate Service provides pre-built AI tools:
+
+### FAQ Generator
+
+```csharp
+public async Task<List<FaqItem>> GenerateFAQs(string topic, int count = 5)
+{
+    var messages = new List<ChatMessage>
+    {
+        new SystemChatMessage($"Generate {count} FAQs about the given topic. Return as JSON array with 'question' and 'answer' fields."),
+        new UserChatMessage(topic)
+    };
+
+    var response = await _openAIService.GenerateRawMessage(messages);
+    return JsonSerializer.Deserialize<List<FaqItem>>(response);
+}
+```
+
+### Blog Post Generator
+
+```csharp
+public async Task<string> GenerateBlogPost(string title, string keywords)
+{
+    var messages = new List<ChatMessage>
+    {
+        new SystemChatMessage(@"You are a professional blog writer. Write engaging, SEO-friendly content.
+Include:
+- Catchy introduction
+- Clear sections with headers
+- Actionable conclusion"),
+        new UserChatMessage($"Write a blog post titled '{title}' focusing on: {keywords}")
+    };
+
+    return await _openAIService.GenerateRawMessage(messages);
+}
+```
+
+### Meta Description Generator
+
+```csharp
+public async Task<string> GenerateMetaDescription(string pageContent)
+{
+    var messages = new List<ChatMessage>
+    {
+        new SystemChatMessage("Generate an SEO meta description (150-160 characters) for the given content."),
+        new UserChatMessage(pageContent)
+    };
+
+    return await _openAIService.GenerateRawMessage(messages);
+}
+```
+
+### Email Writer
+
+```csharp
+public async Task<string> GenerateEmail(string purpose, string tone, string recipientType)
+{
+    var messages = new List<ChatMessage>
+    {
+        new SystemChatMessage($"Write a professional {tone} email. Include subject line."),
+        new UserChatMessage($"Purpose: {purpose}\nRecipient: {recipientType}")
+    };
+
+    return await _openAIService.GenerateRawMessage(messages);
+}
+```
+
+### Grammar Fixer
+
+```csharp
+public async Task<string> FixGrammar(string text)
+{
+    var messages = new List<ChatMessage>
+    {
+        new SystemChatMessage("Fix grammar and spelling errors. Return only the corrected text."),
+        new UserChatMessage(text)
+    };
+
+    return await _openAIService.GenerateRawMessage(messages);
+}
+```
+
+## Best Practices
+
+1. **Use clear system prompts** - Define AI behavior explicitly
+2. **Limit token usage** - Set max_tokens for cost control
+3. **Handle errors gracefully** - API calls can fail
+4. **Cache responses** - For repetitive queries
+5. **Validate outputs** - AI can produce incorrect results
+
+## Error Handling
+
+```csharp
+public async Task<string> SafeGenerate(string prompt)
+{
+    try
+    {
+        var messages = new List<ChatMessage>
+        {
+            new UserChatMessage(prompt)
+        };
+        return await _openAIService.GenerateRawMessage(messages);
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "OpenAI request failed");
+        return "Unable to generate response. Please try again.";
+    }
+}
+```
+
+## Rate Limiting
+
+```csharp
+private readonly SemaphoreSlim _semaphore = new(3); // Max 3 concurrent requests
+
+public async Task<string> RateLimitedGenerate(string prompt)
+{
+    await _semaphore.WaitAsync();
+    try
+    {
+        return await SafeGenerate(prompt);
+    }
+    finally
+    {
+        _semaphore.Release();
+    }
+}
+```
+
+## Next Steps
+
+- [Azure OpenAI](/docs/services/azure-openai) - Enterprise AI
+- [Generate Service Module](/docs/modules/generate-service) - Pre-built AI tools
+- [Third-Party Services](/docs/services/overview) - All integrations

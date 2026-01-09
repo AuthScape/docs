@@ -1,0 +1,247 @@
+---
+title: API Service Call
+description: Utilities for making authenticated API requests to AuthScape backends.
+---
+
+# API Service Call
+
+The apiService utility provides methods for making authenticated HTTP requests to AuthScape API endpoints.
+
+## Features
+
+- Automatic token handling
+- Request/response interceptors
+- Error handling
+- All HTTP methods supported
+- TypeScript support
+
+## Import
+
+```javascript
+import { apiService } from 'authscape';
+```
+
+## Methods
+
+### GET Request
+
+```javascript
+// Simple GET
+let response = await apiService().get("/ControllerName/ActionName");
+
+// GET with query parameters
+let response = await apiService().get("/Users/GetAll?page=1&pageSize=10&status=active");
+```
+
+### POST Request
+
+```javascript
+let response = await apiService().post("/ControllerName/ActionName", {
+  invoiceId: invoiceId,
+  field: cell.field,
+  value: cell.value
+});
+```
+
+### PUT Request
+
+```javascript
+let response = await apiService().put("/Users/Update", {
+  id: 123,
+  firstName: "John",
+  lastName: "Doe"
+});
+```
+
+### DELETE Request
+
+```javascript
+let response = await apiService().delete("/Users/Delete?id=123");
+```
+
+## Usage Examples
+
+### Fetching Data
+
+```javascript
+import { apiService } from 'authscape';
+
+async function loadUsers() {
+  try {
+    const users = await apiService().get('/api/Users/GetAll');
+    return users;
+  } catch (error) {
+    console.error('Failed to load users:', error);
+    throw error;
+  }
+}
+```
+
+### Creating Data
+
+```javascript
+async function createUser(userData) {
+  const newUser = await apiService().post('/api/Users/Create', {
+    firstName: userData.firstName,
+    lastName: userData.lastName,
+    email: userData.email,
+    roleId: userData.roleId
+  });
+  return newUser;
+}
+```
+
+### Updating Data
+
+```javascript
+async function updateUser(userId, updates) {
+  await apiService().put('/api/Users/Update', {
+    id: userId,
+    ...updates
+  });
+}
+```
+
+### Deleting Data
+
+```javascript
+async function deleteUser(userId) {
+  await apiService().delete(`/api/Users/Delete?id=${userId}`);
+}
+```
+
+### File Upload
+
+```javascript
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const result = await apiService().post('/api/Documents/Upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return result;
+}
+```
+
+### Download File
+
+```javascript
+async function downloadFile(fileId) {
+  const response = await apiService().get(`/api/Documents/Download/${fileId}`, {
+    responseType: 'blob'
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'file.pdf';
+  link.click();
+}
+```
+
+## React Hook Pattern
+
+```javascript
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+
+export function useApi(endpoint, options = {}) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const result = await apiService().get(endpoint, options);
+        setData(result);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [endpoint]);
+
+  return { data, loading, error };
+}
+
+// Usage
+function UserList() {
+  const { data: users, loading, error } = useApi('/api/Users/GetAll');
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <ul>
+      {users.map(user => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Error Handling
+
+```javascript
+import { apiService, authService } from 'authscape';
+
+async function makeRequest() {
+  try {
+    const result = await apiService().get('/api/Data');
+    return result;
+  } catch (error) {
+    if (error.response) {
+      // Server responded with error status
+      switch (error.response.status) {
+        case 401:
+          // Token expired, redirect to login
+          authService().login(window.location.href);
+          break;
+        case 403:
+          alert('You do not have permission to access this resource');
+          break;
+        case 404:
+          alert('Resource not found');
+          break;
+        case 500:
+          alert('Server error. Please try again later.');
+          break;
+        default:
+          alert(error.response.data?.message || 'An error occurred');
+      }
+    } else if (error.request) {
+      // Request made but no response
+      alert('Network error. Please check your connection.');
+    } else {
+      // Error setting up request
+      console.error('Request error:', error.message);
+    }
+    throw error;
+  }
+}
+```
+
+## Configuration
+
+The apiService automatically:
+
+1. Adds the `Authorization: Bearer {token}` header
+2. Sets `Content-Type: application/json` for JSON requests
+3. Uses the base URL from environment configuration
+4. Handles token refresh when expired
+
+## Best Practices
+
+1. **Handle errors** - Always wrap API calls in try/catch
+2. **Show loading states** - Indicate when requests are in progress
+3. **Cancel requests** - Cleanup on component unmount
+4. **Use TypeScript** - Add type definitions for responses
+5. **Cache when appropriate** - Use React Query or SWR for caching

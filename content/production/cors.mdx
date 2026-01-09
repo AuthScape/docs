@@ -1,0 +1,220 @@
+---
+title: Understanding CORS
+description: Configure Cross-Origin Resource Sharing (CORS) for AuthScape APIs.
+---
+
+# Understanding CORS
+
+Cross-Origin Resource Sharing (CORS) is a security feature that controls which domains can access your AuthScape APIs. Proper CORS configuration is essential for production deployments.
+
+## What is CORS?
+
+When your Next.js frontend at `https://app.yoursite.com` makes API calls to `https://api.yoursite.com`, the browser enforces CORS policies. Without proper configuration, these requests will be blocked.
+
+## Configuration
+
+### appsettings.json
+
+Configure allowed origins in your settings:
+
+```json
+{
+  "AppSettings": {
+    "CorsOrigins": [
+      "https://yourapp.com",
+      "https://www.yourapp.com",
+      "https://admin.yourapp.com"
+    ]
+  }
+}
+```
+
+### Development Settings
+
+For local development, include localhost:
+
+```json
+{
+  "AppSettings": {
+    "CorsOrigins": [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://localhost:3000"
+    ]
+  }
+}
+```
+
+## CORS Middleware Setup
+
+AuthScape configures CORS in `Startup.cs`:
+
+```csharp
+public void ConfigureServices(IServiceCollection services)
+{
+    var corsOrigins = Configuration.GetSection("AppSettings:CorsOrigins")
+        .Get<string[]>() ?? Array.Empty<string>();
+
+    services.AddCors(options =>
+    {
+        options.AddPolicy("AuthScapePolicy", builder =>
+        {
+            builder
+                .WithOrigins(corsOrigins)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        });
+    });
+}
+
+public void Configure(IApplicationBuilder app)
+{
+    app.UseCors("AuthScapePolicy");
+    // ... other middleware
+}
+```
+
+## Common Issues
+
+### Preflight Requests
+
+Browsers send OPTIONS requests before actual requests. Ensure your server handles these:
+
+```csharp
+// This is handled automatically by ASP.NET Core CORS middleware
+```
+
+### Credentials
+
+When using cookies or authentication headers, both client and server must allow credentials:
+
+**Server:**
+```csharp
+builder.AllowCredentials();
+```
+
+**Client (JavaScript):**
+```javascript
+fetch(url, {
+    credentials: 'include',
+    headers: {
+        'Authorization': `Bearer ${token}`
+    }
+});
+```
+
+### Wildcard Origins
+
+Never use wildcards in production:
+
+```csharp
+// DON'T DO THIS IN PRODUCTION
+builder.AllowAnyOrigin(); // Security risk!
+```
+
+## Environment-Specific Configuration
+
+### Development
+
+```json
+// appsettings.Development.json
+{
+  "AppSettings": {
+    "CorsOrigins": [
+      "http://localhost:3000",
+      "http://localhost:3001"
+    ]
+  }
+}
+```
+
+### Staging
+
+```json
+// appsettings.Staging.json
+{
+  "AppSettings": {
+    "CorsOrigins": [
+      "https://staging.yourapp.com",
+      "https://staging-admin.yourapp.com"
+    ]
+  }
+}
+```
+
+### Production
+
+```json
+// appsettings.Production.json
+{
+  "AppSettings": {
+    "CorsOrigins": [
+      "https://yourapp.com",
+      "https://www.yourapp.com",
+      "https://admin.yourapp.com"
+    ]
+  }
+}
+```
+
+## Multi-Tenant CORS
+
+For whitelabel/OEM deployments with multiple domains:
+
+```csharp
+services.AddCors(options =>
+{
+    options.AddPolicy("DynamicCors", builder =>
+    {
+        builder
+            .SetIsOriginAllowed(origin =>
+            {
+                // Validate against database of allowed tenant domains
+                return IsAllowedTenantDomain(origin);
+            })
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+```
+
+## Debugging CORS Issues
+
+### Browser Console
+
+Check for CORS errors in the browser developer console:
+
+```
+Access to fetch at 'https://api.yourapp.com/api/users'
+from origin 'https://yourapp.com' has been blocked by CORS policy
+```
+
+### Response Headers
+
+Verify the response includes correct CORS headers:
+
+```
+Access-Control-Allow-Origin: https://yourapp.com
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE
+Access-Control-Allow-Headers: Content-Type, Authorization
+Access-Control-Allow-Credentials: true
+```
+
+### Test with curl
+
+```bash
+curl -X OPTIONS https://api.yourapp.com/api/users \
+  -H "Origin: https://yourapp.com" \
+  -H "Access-Control-Request-Method: GET" \
+  -v
+```
+
+## Best Practices
+
+1. **Specific Origins** - Always list exact origins, never use wildcards
+2. **HTTPS Only** - Only allow HTTPS origins in production
+3. **Minimal Headers** - Only expose headers that are needed
+4. **Audit Regularly** - Review allowed origins periodically
+5. **Use Environment Config** - Different origins for dev/staging/production

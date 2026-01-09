@@ -1,0 +1,379 @@
+---
+title: Authentication Flows
+description: Implement login, logout, and signup flows using AuthScape's authService with PKCE support.
+---
+
+# Authentication Flows
+
+AuthScape provides a complete authentication flow using OAuth 2.0 Authorization Code with PKCE (Proof Key for Code Exchange).
+
+## authService Overview
+
+The `authService` helper provides authentication methods:
+
+```javascript
+import { authService } from 'authscape';
+
+// Available methods
+authService().login(redirectUri, dnsRecord, deviceId);
+authService().signUp(redirectUrl);
+authService().logout(redirectUri);
+authService().manageAccount();
+authService().inviteUsers(inviteRequests);
+authService().inviteUser(inviteRequest);
+```
+
+## Login Flow
+
+### PKCE Implementation
+
+AuthScape uses PKCE for secure authentication:
+
+```javascript
+// From authService.js
+login: async (redirectUserUri = null, dnsRecord = null, deviceId = null) => {
+    let state = "1234";
+
+    // Store redirect URI for post-login
+    if (redirectUserUri != null) {
+        localStorage.setItem("redirectUri", redirectUserUri);
+    }
+
+    // Generate PKCE verifier and challenge
+    let verifier = authService().generateRandomString();
+    var challenge = await authService().challenge_from_verifier(verifier);
+
+    // Store verifier for token exchange
+    window.localStorage.setItem("verifier", verifier);
+
+    // Build authorization URL
+    let redirectUri = window.location.origin + "/signin-oidc";
+    let loginUri = process.env.authorityUri +
+        "/connect/authorize" +
+        "?response_type=code" +
+        "&state=" + state +
+        "&client_id=" + process.env.client_id +
+        "&scope=email%20openid%20offline_access%20profile%20api1" +
+        "&redirect_uri=" + redirectUri +
+        "&code_challenge=" + challenge +
+        "&code_challenge_method=S256";
+
+    // Redirect to IDP
+    window.location.href = loginUri;
+}
+```
+
+### Using Login
+
+```jsx
+import { authService } from 'authscape';
+
+export default function LoginPage() {
+  const handleLogin = () => {
+    // Basic login - redirect back to current page after
+    authService().login();
+  };
+
+  const handleLoginWithRedirect = () => {
+    // Login and redirect to specific page
+    authService().login('/dashboard');
+  };
+
+  return (
+    <div>
+      <h1>Welcome</h1>
+      <button onClick={handleLogin}>Sign In</button>
+      <button onClick={handleLoginWithRedirect}>Sign In to Dashboard</button>
+    </div>
+  );
+}
+```
+
+### Handling the Callback
+
+Create a callback page at `/signin-oidc`:
+
+```jsx
+// pages/signin-oidc.js
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Cookies from 'js-cookie';
+
+export default function SignInCallback() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleCallback = async () => {
+      const code = new URLSearchParams(window.location.search).get('code');
+      const verifier = localStorage.getItem('verifier');
+
+      if (!code || !verifier) {
+        router.push('/');
+        return;
+      }
+
+      // Exchange code for tokens
+      const response = await fetch(process.env.NEXT_PUBLIC_AUTHORITY_URI + '/connect/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: window.location.origin + '/signin-oidc',
+          client_id: process.env.NEXT_PUBLIC_CLIENT_ID,
+          code_verifier: verifier,
+        }),
+      });
+
+      const tokens = await response.json();
+
+      if (tokens.access_token) {
+        // Store tokens in cookies
+        const domainHost = window.location.hostname.split('.').slice(-2).join('.');
+
+        Cookies.set('access_token', tokens.access_token, {
+          path: '/',
+          domain: domainHost,
+          secure: true,
+          sameSite: 'None'
+        });
+
+        Cookies.set('refresh_token', tokens.refresh_token, {
+          path: '/',
+          domain: domainHost,
+          secure: true,
+          sameSite: 'None'
+        });
+
+        Cookies.set('expires_in', tokens.expires_in, {
+          path: '/',
+          domain: domainHost
+        });
+
+        // Clear verifier
+        localStorage.removeItem('verifier');
+
+        // Redirect to stored URI or home
+        const redirectUri = localStorage.getItem('redirectUri') || '/';
+        localStorage.removeItem('redirectUri');
+        router.push(redirectUri);
+      }
+    };
+
+    handleCallback();
+  }, [router]);
+
+  return <div>Signing in...</div>;
+}
+```
+
+## Signup Flow
+
+```javascript
+// From authService.js
+signUp: (redirectUrl = null) => {
+    let AuthUri = process.env.authorityUri;
+
+    let url = "";
+    if (redirectUrl == null) {
+        url = AuthUri + "/Identity/Account/Register?returnUrl=" + window.location.href;
+        localStorage.setItem("redirectUri", window.location.href);
+    } else {
+        url = AuthUri + "/Identity/Account/Register?returnUrl=" + redirectUrl;
+        localStorage.setItem("redirectUri", redirectUrl);
+    }
+
+    window.location.href = url;
+}
+```
+
+### Using Signup
+
+```jsx
+import { authService } from 'authscape';
+
+export default function SignupButton() {
+  const handleSignup = () => {
+    // Redirect to registration page
+    authService().signUp('/welcome');
+  };
+
+  return (
+    <button onClick={handleSignup}>Create Account</button>
+  );
+}
+```
+
+## Logout Flow
+
+```javascript
+// From authService.js
+logout: async (redirectUri = null) => {
+    let domainHost = window.location.hostname.split('.').slice(-2).join('.');
+    let AuthUri = process.env.authorityUri;
+
+    // Clear auth cookies
+    Cookies.remove('access_token', { path: '/', domain: domainHost });
+    Cookies.remove('refresh_token', { path: '/', domain: domainHost });
+    Cookies.remove('expires_in', { path: '/', domain: domainHost });
+
+    // Redirect to IDP logout
+    setTimeout(() => {
+        if (redirectUri == null) {
+            window.location.href = AuthUri + "/connect/logout?redirect=" + window.location.href;
+        } else {
+            window.location.href = AuthUri + "/connect/logout?redirect=" + redirectUri;
+        }
+    }, 500);
+}
+```
+
+### Using Logout
+
+```jsx
+import { authService } from 'authscape';
+
+export default function LogoutButton() {
+  const handleLogout = () => {
+    // Logout and redirect to home
+    authService().logout('/');
+  };
+
+  return (
+    <button onClick={handleLogout}>Sign Out</button>
+  );
+}
+```
+
+## Token Refresh
+
+Access tokens expire after 1 hour. Use refresh tokens to get new access tokens:
+
+```javascript
+async function refreshToken() {
+  const refreshToken = Cookies.get('refresh_token');
+
+  if (!refreshToken) {
+    // No refresh token, redirect to login
+    authService().login();
+    return;
+  }
+
+  const response = await fetch(process.env.NEXT_PUBLIC_AUTHORITY_URI + '/connect/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: process.env.NEXT_PUBLIC_CLIENT_ID,
+    }),
+  });
+
+  const tokens = await response.json();
+
+  if (tokens.access_token) {
+    const domainHost = window.location.hostname.split('.').slice(-2).join('.');
+
+    Cookies.set('access_token', tokens.access_token, {
+      path: '/',
+      domain: domainHost,
+      secure: true,
+      sameSite: 'None'
+    });
+
+    Cookies.set('refresh_token', tokens.refresh_token, {
+      path: '/',
+      domain: domainHost,
+      secure: true,
+      sameSite: 'None'
+    });
+
+    return tokens.access_token;
+  } else {
+    // Refresh failed, redirect to login
+    authService().login();
+  }
+}
+```
+
+## Authorization Component
+
+Wrap your app with `AuthorizationComponent` for automatic auth handling:
+
+```jsx
+import { AuthorizationComponent } from 'authscape';
+import { useState } from 'react';
+
+export default function App({ Component, pageProps }) {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userLoaded, setUserLoaded] = useState(false);
+
+  return (
+    <AuthorizationComponent
+      isEnabled={true}
+      setCurrentUser={setCurrentUser}
+      userLoaded={(loaded) => setUserLoaded(loaded)}
+    >
+      {userLoaded && currentUser && (
+        <Component {...pageProps} user={currentUser} />
+      )}
+    </AuthorizationComponent>
+  );
+}
+```
+
+## Environment Configuration
+
+Set up environment variables:
+
+```env
+# .env.local
+NEXT_PUBLIC_AUTHORITY_URI=https://auth.yourapp.com
+NEXT_PUBLIC_CLIENT_ID=your-client-id
+NEXT_PUBLIC_API_URI=https://api.yourapp.com
+```
+
+## Cookie Configuration
+
+AuthScape stores tokens in cookies for cross-subdomain access:
+
+| Cookie | Purpose | Expiration |
+|--------|---------|------------|
+| `access_token` | API authentication | 1 hour |
+| `refresh_token` | Get new access token | Long-lived |
+| `expires_in` | Track token expiry | With access token |
+
+## Flow Diagram
+
+```
+User                  Frontend                 IDP                    API
+ │                       │                      │                      │
+ ├── Click Login ───────►│                      │                      │
+ │                       ├── Generate PKCE ────►│                      │
+ │                       ├── Redirect ─────────►│                      │
+ │                       │                      │                      │
+ │◄────────── Show Login Form ─────────────────┤                      │
+ │                       │                      │                      │
+ ├── Enter Credentials ──────────────────────►│                      │
+ │                       │                      │                      │
+ │◄────────── Redirect with code ──────────────┤                      │
+ │                       │                      │                      │
+ │                       ├── Exchange code ────►│                      │
+ │                       │◄─── Return tokens ──┤                      │
+ │                       │                      │                      │
+ │                       ├── Store in cookies   │                      │
+ │                       │                      │                      │
+ │                       ├── API request ──────────────────────────────►│
+ │                       │      (with access_token)                    │
+ │                       │◄───────────────────── Return data ─────────┤
+```
+
+## Next Steps
+
+- [Claims & Identity](/docs/user-profile/claims-identity) - JWT token claims
+- [IDP Admin Overview](/docs/admin/overview) - OpenIddict configuration
+- [API Service Call](/docs/components/api-service-call) - Making authenticated API calls

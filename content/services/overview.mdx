@@ -1,0 +1,211 @@
+---
+title: Third-Party Services Overview
+description: Overview of all third-party service integrations available in AuthScape.
+---
+
+# Third-Party Services Overview
+
+AuthScape provides integrations with various third-party services for email, payments, cloud storage, AI, and more.
+
+## Available Integrations
+
+### Email Services
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| [SendGrid](/docs/services/email-sendgrid) | Active | Transactional email, templates, analytics |
+| [Mailgun](/docs/services/email-mailgun) | Active | Transactional email, webhooks |
+| [SMTP (MailKit)](/docs/services/email-smtp) | Active | Generic SMTP support |
+| Smtp2Go | Active | SMTP relay service |
+| Azure Communication | Pending | Azure-native email |
+
+### Payment Processing
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| [Stripe Payments](/docs/services/stripe-payments) | Active | One-time payments, saved cards |
+| [Stripe Connect](/docs/services/stripe-connect) | Active | Marketplace payments |
+| [Stripe Subscriptions](/docs/services/stripe-subscriptions) | Active | Recurring billing |
+
+### Cloud Services
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| [Azure Storage](/docs/services/azure-storage) | Active | Blob storage, file management |
+| [Azure OpenAI](/docs/services/azure-openai) | Active | GPT models via Azure |
+| Azure Document Intelligence | Active | Document processing |
+| Azure Web App | Active | Domain/SSL management |
+
+### AI Services
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| [OpenAI / ChatGPT](/docs/services/openai) | Active | Text generation, translation |
+| Azure OpenAI | Active | Enterprise AI integration |
+
+### Location Services
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| [Google Maps](/docs/services/google-maps) | Active | Address autocomplete, geocoding |
+| Google Places | Active | Place search, details |
+
+### OAuth Providers
+
+AuthScape supports 20+ OAuth providers for social login:
+
+- Adobe, Amazon, Apple, Asana, Autodesk
+- Basecamp, BattleNet, Coinbase
+- Discord, Dropbox, Fitbit
+- GitHub, HubSpot, LinkedIn
+- MailChimp, Notion, Patreon
+- PayPal, Slack, Spotify
+
+## Configuration Architecture
+
+AuthScape uses a provider factory pattern for services:
+
+```csharp
+// Startup.cs
+services.AddEmailService(Configuration, "Email");
+services.AddStripeServices(Configuration);
+services.AddAzureServices(Configuration);
+```
+
+### appsettings.json Structure
+
+```json
+{
+  "AppSettings": {
+    "Stripe": {
+      "SecretKey": "sk_test_xxx",
+      "PublishableKey": "pk_test_xxx",
+      "SigningSecret": "whsec_xxx"
+    },
+    "Storage": {
+      "AzureConnectionString": "DefaultEndpointsProtocol=https;...",
+      "BaseUri": "https://yourstorage.blob.core.windows.net",
+      "UserProfileContainer": "profiles"
+    },
+    "OpenAI": {
+      "APIKey": "sk-xxx"
+    }
+  },
+  "Email": {
+    "DefaultFromEmail": "noreply@yourapp.com",
+    "DefaultFromName": "Your App",
+    "DefaultProvider": "SendGrid",
+    "Providers": {
+      "SendGrid": {
+        "Enabled": true,
+        "ApiKey": "SG.xxx"
+      },
+      "Mailgun": {
+        "Enabled": false,
+        "ApiKey": "xxx",
+        "Settings": {
+          "Domain": "mail.yourapp.com",
+          "BaseUrl": "https://api.mailgun.net/v3"
+        }
+      }
+    }
+  }
+}
+```
+
+## Using the Email Service
+
+The email service uses a factory pattern to support multiple providers:
+
+```csharp
+public interface IEmailService
+{
+    Task<IEmailResponse> SendEmailAsync(IEmailMessage message, CancellationToken ct = default);
+    Task<IEmailResponse> SendEmailAsync(IEmailMessage message, string providerName, CancellationToken ct = default);
+}
+
+// Usage in controller
+public class NotificationController : ControllerBase
+{
+    private readonly IEmailService _emailService;
+
+    [HttpPost("send")]
+    public async Task<IActionResult> SendNotification([FromBody] EmailRequest request)
+    {
+        var message = new EmailMessage
+        {
+            To = new[] { new EmailRecipient(request.Email, request.Name) },
+            Subject = request.Subject,
+            HtmlContent = request.Body
+        };
+
+        var result = await _emailService.SendEmailAsync(message);
+
+        if (result.Success)
+            return Ok(new { messageId = result.MessageId });
+        else
+            return BadRequest(new { error = result.ErrorMessage });
+    }
+}
+```
+
+## Service Registration
+
+### Email Service
+
+```csharp
+// In Startup.cs or Program.cs
+services.AddEmailService(Configuration, "Email");
+```
+
+### Stripe Services
+
+```csharp
+services.AddScoped<IStripePayService, StripePayService>();
+services.AddScoped<IStripeConnectService, StripeConnectService>();
+services.AddScoped<IStripeSubscriptionService, StripeSubscriptionService>();
+```
+
+### Azure Services
+
+```csharp
+services.AddScoped<IAzureWebAppService, AzureWebAppService>();
+services.AddScoped<IAzureDocumentIntelligenceService, AzureDocumentIntelligenceService>();
+```
+
+### OpenAI Services
+
+```csharp
+services.AddScoped<IOpenAIService, OpenAIService>();
+services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
+```
+
+## Error Handling
+
+All services return structured responses:
+
+```csharp
+public interface IEmailResponse
+{
+    bool Success { get; }
+    string ProviderName { get; }
+    string? MessageId { get; }
+    string? ErrorMessage { get; }
+    int? StatusCode { get; }
+}
+```
+
+## Best Practices
+
+1. **Use environment variables** - Don't commit API keys to source control
+2. **Configure fallback providers** - Set up multiple email providers
+3. **Handle failures gracefully** - Log errors and notify admins
+4. **Use webhooks** - For payment confirmations and email events
+5. **Monitor usage** - Track API calls and costs
+
+## Next Steps
+
+- [Email - SendGrid](/docs/services/email-sendgrid) - SendGrid configuration
+- [Stripe Payments](/docs/services/stripe-payments) - Payment processing
+- [Azure Storage](/docs/services/azure-storage) - File storage
+- [OpenAI](/docs/services/openai) - AI integration

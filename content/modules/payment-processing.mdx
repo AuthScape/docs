@@ -1,0 +1,348 @@
+---
+title: Payment Processing
+description: Stripe integration with card storage, ACH payments, and plug-and-play payment UI.
+---
+
+# Payment Processing
+
+The Payment Processing module provides comprehensive Stripe integration with card storage, ACH payments, subscriptions, and a plug-and-play payment UI.
+
+## Features
+
+- Stripe Payments integration
+- Store cards for future payments
+- ACH bank transfers
+- Subscription management
+- One-time payments
+- Plug and play modal/embedded UI
+- Webhook handling
+- Refunds and disputes
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "Stripe": {
+      "PublishableKey": "pk_test_...",
+      "SecretKey": "sk_test_...",
+      "WebhookSecret": "whsec_...",
+      "EnableACH": true
+    }
+  }
+}
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Payments/CreateIntent` | POST | Create payment intent |
+| `/api/Payments/CreateSubscription` | POST | Start subscription |
+| `/api/Payments/SaveCard` | POST | Save card for future |
+| `/api/Payments/GetCards` | GET | List saved cards |
+| `/api/Payments/ChargeCard` | POST | Charge saved card |
+| `/api/Payments/CreateACHPayment` | POST | ACH bank transfer |
+
+## Quick Start
+
+### Create Payment Intent
+
+```javascript
+import { apiService } from 'authscape';
+
+// Create a payment intent on the server
+const { clientSecret } = await apiService().post('/api/Payments/CreateIntent', {
+  amount: 4999,  // $49.99 in cents
+  currency: 'usd',
+  description: 'Premium Plan - Monthly'
+});
+
+// Use Stripe.js to confirm the payment
+const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_KEY);
+const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+  payment_method: {
+    card: cardElement,
+    billing_details: {
+      name: 'John Doe',
+      email: 'john@example.com'
+    }
+  }
+});
+
+if (error) {
+  console.error(error.message);
+} else if (paymentIntent.status === 'succeeded') {
+  console.log('Payment successful!');
+}
+```
+
+## Plug and Play Payment Modal
+
+AuthScape includes a ready-to-use payment modal:
+
+```jsx
+import { useState } from 'react';
+import { PaymentModal } from 'authscape/components';
+
+export default function CheckoutPage() {
+  const [open, setOpen] = useState(false);
+
+  const handlePaymentComplete = (result) => {
+    if (result.success) {
+      alert('Payment successful!');
+      // Redirect to success page
+    }
+  };
+
+  return (
+    <div>
+      <h1>Checkout</h1>
+      <button onClick={() => setOpen(true)}>
+        Pay $49.99
+      </button>
+
+      <PaymentModal
+        open={open}
+        onClose={() => setOpen(false)}
+        amount={4999}
+        currency="usd"
+        description="Premium Plan"
+        onComplete={handlePaymentComplete}
+      />
+    </div>
+  );
+}
+```
+
+## Save Card for Future Payments
+
+```javascript
+// Step 1: Create setup intent
+const { clientSecret } = await apiService().post('/api/Payments/CreateSetupIntent');
+
+// Step 2: Confirm with Stripe.js
+const { error, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+  payment_method: {
+    card: cardElement,
+    billing_details: { name: 'John Doe' }
+  }
+});
+
+if (!error && setupIntent.status === 'succeeded') {
+  // Card is now saved
+  console.log('Card saved!');
+}
+```
+
+### Charge Saved Card
+
+```javascript
+// Get user's saved cards
+const cards = await apiService().get('/api/Payments/GetCards');
+// [
+//   { id: 'pm_xxx', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2025 }
+// ]
+
+// Charge a saved card
+await apiService().post('/api/Payments/ChargeCard', {
+  paymentMethodId: cards[0].id,
+  amount: 4999,
+  description: 'Monthly subscription'
+});
+```
+
+## ACH Bank Payments
+
+```javascript
+// Create ACH payment
+const { clientSecret } = await apiService().post('/api/Payments/CreateACHPayment', {
+  amount: 10000,  // $100.00
+  bankAccount: {
+    accountHolderName: 'John Doe',
+    routingNumber: '110000000',
+    accountNumber: '000123456789'
+  }
+});
+
+// ACH payments are verified asynchronously via micro-deposits
+// Status will be updated via webhook
+```
+
+## Subscriptions
+
+### Create Subscription
+
+```javascript
+const subscription = await apiService().post('/api/Payments/CreateSubscription', {
+  priceId: 'price_xxxxx',  // Stripe Price ID
+  paymentMethodId: 'pm_xxxxx'  // Saved card
+});
+```
+
+### Cancel Subscription
+
+```javascript
+await apiService().post('/api/Payments/CancelSubscription', {
+  subscriptionId: 'sub_xxxxx',
+  cancelAtPeriodEnd: true  // Cancel at end of billing period
+});
+```
+
+## Backend Implementation
+
+### PaymentController
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize]
+public class PaymentsController : ControllerBase
+{
+    private readonly IStripeService _stripe;
+    private readonly IUserManagementService _userService;
+
+    [HttpPost]
+    public async Task<IActionResult> CreateIntent([FromBody] CreatePaymentRequest request)
+    {
+        var user = await _userService.GetSignedInUser();
+
+        var paymentIntent = await _stripe.CreatePaymentIntent(
+            request.Amount,
+            request.Currency,
+            new Dictionary<string, string>
+            {
+                ["userId"] = user.Id.ToString(),
+                ["description"] = request.Description
+            }
+        );
+
+        return Ok(new { clientSecret = paymentIntent.ClientSecret });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> ChargeCard([FromBody] ChargeCardRequest request)
+    {
+        var user = await _userService.GetSignedInUser();
+
+        var result = await _stripe.ChargePaymentMethod(
+            user.StripeCustomerId,
+            request.PaymentMethodId,
+            request.Amount,
+            request.Description
+        );
+
+        return Ok(result);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetCards()
+    {
+        var user = await _userService.GetSignedInUser();
+        var cards = await _stripe.GetCustomerPaymentMethods(user.StripeCustomerId);
+        return Ok(cards);
+    }
+}
+```
+
+## Webhook Handler
+
+```csharp
+[HttpPost]
+[Route("api/Payments/Webhook")]
+public async Task<IActionResult> Webhook()
+{
+    var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+    var signature = Request.Headers["Stripe-Signature"];
+
+    try
+    {
+        var stripeEvent = EventUtility.ConstructEvent(
+            json,
+            signature,
+            _config["Stripe:WebhookSecret"]
+        );
+
+        switch (stripeEvent.Type)
+        {
+            case "payment_intent.succeeded":
+                var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                await HandlePaymentSuccess(paymentIntent);
+                break;
+
+            case "payment_intent.payment_failed":
+                var failedIntent = stripeEvent.Data.Object as PaymentIntent;
+                await HandlePaymentFailed(failedIntent);
+                break;
+
+            case "customer.subscription.updated":
+                var subscription = stripeEvent.Data.Object as Subscription;
+                await HandleSubscriptionUpdate(subscription);
+                break;
+        }
+
+        return Ok();
+    }
+    catch (StripeException)
+    {
+        return BadRequest();
+    }
+}
+```
+
+## Payment Form Component
+
+```jsx
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { useState } from 'react';
+import { apiService } from 'authscape';
+
+export default function PaymentForm({ amount, onSuccess }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setLoading(true);
+
+    // Create payment intent
+    const { clientSecret } = await apiService().post('/api/Payments/CreateIntent', {
+      amount,
+      currency: 'usd'
+    });
+
+    // Confirm payment
+    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: { card: elements.getElement(CardElement) }
+    });
+
+    if (error) {
+      setError(error.message);
+    } else if (paymentIntent.status === 'succeeded') {
+      onSuccess(paymentIntent);
+    }
+
+    setLoading(false);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <CardElement />
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <button type="submit" disabled={!stripe || loading}>
+        {loading ? 'Processing...' : `Pay $${(amount / 100).toFixed(2)}`}
+      </button>
+    </form>
+  );
+}
+```
+
+## Best Practices
+
+1. **Never log card details** - Let Stripe handle sensitive data
+2. **Use webhooks** - Don't rely solely on client confirmation
+3. **Handle errors gracefully** - Show clear error messages
+4. **Test with Stripe test cards** - Use 4242 4242 4242 4242 for testing
+5. **Enable 3D Secure** - For additional fraud protection

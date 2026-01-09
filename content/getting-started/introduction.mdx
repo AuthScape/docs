@@ -1,0 +1,94 @@
+---
+title: Introduction to AuthScape
+description: Learn about AuthScape, a comprehensive authentication and application framework for .NET applications.
+---
+
+# Introduction to AuthScape
+
+AuthScape is a comprehensive authentication and application framework designed to accelerate the development of secure, scalable .NET applications. It provides a complete solution for user authentication, multi-tenant architecture, and a rich ecosystem of plugins.
+
+## What is AuthScape?
+
+AuthScape is built on top of modern .NET technologies and provides:
+
+- **OpenIddict-based Authentication** - Industry-standard OAuth2 and OpenID Connect support
+- **Multi-tenant Architecture** - Built-in support for companies and locations
+- **Flexible Configuration** - Support for JSON files, Azure Key Vault, AWS Secrets Manager, and environment variables
+- **Multiple Database Providers** - SQL Server, PostgreSQL, SQLite, with auto-detection
+- **Rich Plugin Ecosystem** - 30+ plugins for payments, email, content management, and more
+
+## Key Features
+
+### Authentication & Security
+
+- OAuth2 Authorization Code Flow with PKCE
+- Client Credentials for server-to-server communication
+- Refresh token support
+- Role-based and permission-based authorization
+- Third-party authentication (Google, Facebook, Microsoft, GitHub)
+
+### Configuration Management
+
+AuthScape supports multiple configuration sources with a clear priority order:
+
+1. Shared JSON files (`authscape.json`)
+2. Project-specific JSON files (`appsettings.json`)
+3. User Secrets (development)
+4. Environment Variables
+5. Azure Key Vault
+6. AWS Secrets Manager
+
+### Database Flexibility
+
+Switch between database providers without changing your code:
+
+```csharp
+// SQL Server
+"DatabaseContext": "Server=localhost;Database=AuthScape;Trusted_Connection=true;"
+
+// PostgreSQL
+"DatabaseContext": "Host=localhost;Database=authscape;Username=postgres;Password=pass"
+
+// SQLite
+"DatabaseContext": "Data Source=AuthScape.db"
+```
+
+### Plugin Ecosystem
+
+AuthScape includes plugins for:
+
+- **Payments** - Stripe integration with subscriptions
+- **Email** - SendGrid for transactional emails
+- **Content Management** - Full CMS with page builder
+- **Tickets** - Customer support system
+- **Analytics** - Event tracking and reporting
+- **And many more...**
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Next.js Frontend                        │
+│                   (AuthScape.NextJS)                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                         API Layer                            │
+│                      (AuthScape.Core/API)                    │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│       IDP       │ │    Plugins      │ │    Database     │
+│  (OpenIddict)   │ │   (30+ modules) │ │  (EF Core)      │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+## Next Steps
+
+- [Quick Start](/docs/getting-started/quickstart) - Get up and running in minutes
+- [Configuration](/docs/configuration/overview) - Learn about configuration options
+- [Authentication](/docs/authentication/overview) - Set up authentication
+- [Plugins](/docs/plugins/overview) - Explore available plugins

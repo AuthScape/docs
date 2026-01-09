@@ -1,0 +1,293 @@
+---
+title: Unity
+description: Build games and applications for Desktop, iOS, and Android with AuthScape Unity integration.
+---
+
+# Unity
+
+AuthScape supports Unity for building games and applications across Desktop (Windows, Mac, Linux), iOS, and Android platforms.
+
+## Supported Platforms
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Windows | Supported | Full feature support |
+| macOS | Supported | Full feature support |
+| Linux | Supported | Full feature support |
+| iOS | Supported | App Store ready |
+| Android | Supported | Google Play ready |
+
+## Getting Started
+
+### 1. Import AuthScape SDK
+
+Download the AuthScape Unity SDK and import it into your project:
+
+```
+Assets/
+├── AuthScape/
+│   ├── Scripts/
+│   │   ├── AuthScapeClient.cs
+│   │   ├── AuthManager.cs
+│   │   └── ApiService.cs
+│   └── Prefabs/
+│       └── AuthScapeManager.prefab
+```
+
+### 2. Add AuthScape Manager
+
+Add the `AuthScapeManager` prefab to your first scene.
+
+### 3. Configure Settings
+
+Create an AuthScape configuration asset:
+
+```csharp
+[CreateAssetMenu(fileName = "AuthScapeConfig", menuName = "AuthScape/Configuration")]
+public class AuthScapeConfig : ScriptableObject
+{
+    public string BaseUrl = "https://api.yourapp.com";
+    public string ClientId = "unity-app";
+    public string RedirectUri = "yourapp://callback";
+}
+```
+
+## Authentication
+
+### Login Flow
+
+```csharp
+using AuthScape;
+using UnityEngine;
+
+public class LoginManager : MonoBehaviour
+{
+    public void Login()
+    {
+        AuthManager.Instance.Login(
+            onSuccess: (user) => {
+                Debug.Log($"Welcome, {user.FirstName}!");
+                SceneManager.LoadScene("MainMenu");
+            },
+            onError: (error) => {
+                Debug.LogError($"Login failed: {error}");
+            }
+        );
+    }
+
+    public void Logout()
+    {
+        AuthManager.Instance.Logout();
+        SceneManager.LoadScene("LoginScene");
+    }
+}
+```
+
+### Check Authentication State
+
+```csharp
+void Start()
+{
+    if (AuthManager.Instance.IsAuthenticated)
+    {
+        // User is logged in
+        var user = AuthManager.Instance.CurrentUser;
+        Debug.Log($"User: {user.Email}");
+    }
+    else
+    {
+        // Redirect to login
+        SceneManager.LoadScene("LoginScene");
+    }
+}
+```
+
+### Deep Link Handling
+
+For mobile platforms, configure deep links for OAuth callback:
+
+**iOS (Info.plist):**
+```xml
+<key>CFBundleURLTypes</key>
+<array>
+    <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+            <string>yourapp</string>
+        </array>
+    </dict>
+</array>
+```
+
+**Android (AndroidManifest.xml):**
+```xml
+<activity android:name="com.unity3d.player.UnityPlayerActivity">
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="yourapp" android:host="callback" />
+    </intent-filter>
+</activity>
+```
+
+## Making API Calls
+
+### GET Request
+
+```csharp
+using AuthScape;
+using System.Threading.Tasks;
+
+public class UserService : MonoBehaviour
+{
+    public async Task<UserProfile> GetProfile()
+    {
+        var response = await ApiService.Instance.GetAsync<UserProfile>("/api/Users/GetProfile");
+        return response;
+    }
+}
+```
+
+### POST Request
+
+```csharp
+public async Task SaveScore(int score, string level)
+{
+    var data = new ScoreData
+    {
+        Score = score,
+        Level = level,
+        Timestamp = DateTime.UtcNow
+    };
+
+    await ApiService.Instance.PostAsync("/api/Scores/Save", data);
+}
+```
+
+### With Callbacks (Non-async)
+
+```csharp
+public void LoadLeaderboard()
+{
+    ApiService.Instance.Get<List<LeaderboardEntry>>(
+        "/api/Leaderboard/Top100",
+        onSuccess: (entries) => {
+            foreach (var entry in entries)
+            {
+                Debug.Log($"{entry.Rank}. {entry.PlayerName}: {entry.Score}");
+            }
+        },
+        onError: (error) => {
+            Debug.LogError($"Failed to load leaderboard: {error}");
+        }
+    );
+}
+```
+
+## Secure Token Storage
+
+### PlayerPrefs (Development Only)
+
+```csharp
+// NOT recommended for production
+PlayerPrefs.SetString("access_token", token);
+```
+
+### Keychain/Keystore (Production)
+
+Use platform-specific secure storage:
+
+```csharp
+public class SecureStorage
+{
+    public static void SaveToken(string token)
+    {
+        #if UNITY_IOS
+            KeychainAccess.SetPassword("authscape", "access_token", token);
+        #elif UNITY_ANDROID
+            AndroidKeystore.SetValue("access_token", token);
+        #else
+            // Desktop - use encrypted file
+            EncryptedFile.Save("auth.dat", token);
+        #endif
+    }
+}
+```
+
+## Offline Support
+
+Handle offline scenarios gracefully:
+
+```csharp
+public class OfflineManager : MonoBehaviour
+{
+    private Queue<ApiRequest> pendingRequests = new Queue<ApiRequest>();
+
+    public async Task<T> RequestWithOfflineSupport<T>(string endpoint)
+    {
+        if (Application.internetReachability == NetworkReachability.NotReachable)
+        {
+            // Return cached data
+            return CacheManager.Get<T>(endpoint);
+        }
+
+        try
+        {
+            var result = await ApiService.Instance.GetAsync<T>(endpoint);
+            CacheManager.Set(endpoint, result);
+            return result;
+        }
+        catch (Exception)
+        {
+            return CacheManager.Get<T>(endpoint);
+        }
+    }
+}
+```
+
+## Example: Game with User Accounts
+
+```csharp
+public class GameManager : MonoBehaviour
+{
+    async void Start()
+    {
+        // Check if user is logged in
+        if (!AuthManager.Instance.IsAuthenticated)
+        {
+            ShowLoginUI();
+            return;
+        }
+
+        // Load user data
+        var profile = await ApiService.Instance.GetAsync<PlayerProfile>("/api/Player/Profile");
+
+        // Load saved game state
+        var gameState = await ApiService.Instance.GetAsync<GameState>("/api/Player/GameState");
+
+        // Initialize game with loaded data
+        InitializeGame(profile, gameState);
+    }
+
+    public async void SaveGame()
+    {
+        var gameState = new GameState
+        {
+            Level = currentLevel,
+            Score = currentScore,
+            Inventory = playerInventory
+        };
+
+        await ApiService.Instance.PostAsync("/api/Player/SaveGame", gameState);
+    }
+}
+```
+
+## Best Practices
+
+1. **Token Refresh** - Implement automatic token refresh before expiry
+2. **Offline First** - Cache critical data for offline gameplay
+3. **Error Handling** - Show user-friendly error messages
+4. **Secure Storage** - Use platform keychain/keystore for tokens
+5. **Background Sync** - Sync data when app returns to foreground

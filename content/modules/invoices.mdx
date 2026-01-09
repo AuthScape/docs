@@ -1,0 +1,317 @@
+---
+title: Invoices
+description: Create and manage invoices with line items, payment tracking, and PDF generation.
+---
+
+# Invoices
+
+The Invoices module provides comprehensive invoice management including creation, line items, payment tracking, and PDF generation.
+
+## Features
+
+- Invoice creation and editing
+- Line items with quantities and prices
+- Tax calculations
+- Payment status tracking
+- PDF generation and download
+- Email delivery
+- Recurring invoices
+- Payment integration with Stripe
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Invoices/List` | GET | List invoices |
+| `/api/Invoices/Get/{id}` | GET | Get invoice details |
+| `/api/Invoices/Create` | POST | Create new invoice |
+| `/api/Invoices/Update` | PUT | Update invoice |
+| `/api/Invoices/SendEmail` | POST | Send invoice via email |
+| `/api/Invoices/GeneratePDF/{id}` | GET | Download PDF |
+
+## Usage
+
+### Create Invoice
+
+```javascript
+import { apiService } from 'authscape';
+
+const invoice = await apiService().post('/api/Invoices/Create', {
+  customerId: 123,
+  dueDate: '2024-02-15',
+  lineItems: [
+    {
+      description: 'Web Development Services',
+      quantity: 10,
+      unitPrice: 150.00
+    },
+    {
+      description: 'Hosting (Monthly)',
+      quantity: 1,
+      unitPrice: 49.99
+    }
+  ],
+  taxRate: 8.5,  // Optional
+  notes: 'Payment due within 30 days'
+});
+```
+
+### List Invoices
+
+```javascript
+const invoices = await apiService().get('/api/Invoices/List?status=pending&customerId=123&startDate=2024-01-01&endDate=2024-12-31');
+```
+
+### Get Invoice Details
+
+```javascript
+const invoice = await apiService().get('/api/Invoices/Get/456');
+// {
+//   id: 456,
+//   invoiceNumber: 'INV-2024-0001',
+//   customer: { id: 123, name: 'Acme Corp', email: 'billing@acme.com' },
+//   lineItems: [...],
+//   subtotal: 1549.99,
+//   taxAmount: 131.75,
+//   total: 1681.74,
+//   amountPaid: 0,
+//   amountDue: 1681.74,
+//   status: 'pending',
+//   dueDate: '2024-02-15',
+//   createdAt: '2024-01-15'
+// }
+```
+
+## Models
+
+### Invoice
+
+```csharp
+public class Invoice
+{
+    public long Id { get; set; }
+    public string InvoiceNumber { get; set; }
+    public long CustomerId { get; set; }
+    public long CompanyId { get; set; }
+    public InvoiceStatus Status { get; set; }
+    public DateTime IssueDate { get; set; }
+    public DateTime DueDate { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal TaxRate { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal Total { get; set; }
+    public decimal AmountPaid { get; set; }
+    public string Notes { get; set; }
+    public string PaymentTerms { get; set; }
+
+    public Company Company { get; set; }
+    public Customer Customer { get; set; }
+    public List<InvoiceLineItem> LineItems { get; set; }
+    public List<InvoicePayment> Payments { get; set; }
+}
+
+public enum InvoiceStatus
+{
+    Draft,
+    Pending,
+    Paid,
+    PartiallyPaid,
+    Overdue,
+    Cancelled
+}
+```
+
+### InvoiceLineItem
+
+```csharp
+public class InvoiceLineItem
+{
+    public long Id { get; set; }
+    public long InvoiceId { get; set; }
+    public string Description { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal Amount { get; set; }
+    public int SortOrder { get; set; }
+}
+```
+
+## Record Payment
+
+```javascript
+await apiService().post('/api/Invoices/RecordPayment', {
+  invoiceId: 456,
+  amount: 500.00,
+  paymentMethod: 'credit_card',
+  transactionId: 'txn_xxxxx',
+  notes: 'Partial payment'
+});
+```
+
+## Generate and Download PDF
+
+```javascript
+// Download PDF
+const response = await apiService().get('/api/Invoices/GeneratePDF/456', {
+  responseType: 'blob'
+});
+
+const url = window.URL.createObjectURL(new Blob([response]));
+const link = document.createElement('a');
+link.href = url;
+link.download = 'invoice-456.pdf';
+link.click();
+```
+
+## Send Invoice Email
+
+```javascript
+await apiService().post('/api/Invoices/SendEmail', {
+  invoiceId: 456,
+  to: 'customer@example.com',
+  cc: ['accounts@example.com'],
+  message: 'Please find attached your invoice for January services.'
+});
+```
+
+## Backend Implementation
+
+### InvoiceController
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize]
+public class InvoicesController : ControllerBase
+{
+    private readonly IInvoiceService _invoiceService;
+    private readonly IPdfService _pdfService;
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateInvoiceRequest request)
+    {
+        var invoice = await _invoiceService.CreateAsync(request);
+        return Ok(invoice);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GeneratePDF(long id)
+    {
+        var invoice = await _invoiceService.GetByIdAsync(id);
+        var pdf = await _pdfService.GenerateInvoicePdf(invoice);
+
+        return File(pdf, "application/pdf", $"invoice-{invoice.InvoiceNumber}.pdf");
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> RecordPayment([FromBody] RecordPaymentRequest request)
+    {
+        await _invoiceService.RecordPaymentAsync(
+            request.InvoiceId,
+            request.Amount,
+            request.PaymentMethod,
+            request.TransactionId
+        );
+        return Ok();
+    }
+}
+```
+
+## Invoice Component
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import {
+  Table, TableBody, TableCell, TableHead, TableRow,
+  Paper, Typography, Button, Chip
+} from '@mui/material';
+
+export default function InvoiceView({ invoiceId }) {
+  const [invoice, setInvoice] = useState(null);
+
+  useEffect(() => {
+    loadInvoice();
+  }, [invoiceId]);
+
+  async function loadInvoice() {
+    const data = await apiService().get(`/api/Invoices/Get/${invoiceId}`);
+    setInvoice(data);
+  }
+
+  if (!invoice) return <div>Loading...</div>;
+
+  return (
+    <Paper sx={{ p: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
+        <div>
+          <Typography variant="h4">Invoice #{invoice.invoiceNumber}</Typography>
+          <Chip
+            label={invoice.status}
+            color={invoice.status === 'Paid' ? 'success' : 'warning'}
+          />
+        </div>
+        <div>
+          <Button onClick={() => downloadPdf(invoiceId)}>Download PDF</Button>
+          <Button onClick={() => sendEmail(invoiceId)}>Send Email</Button>
+        </div>
+      </div>
+
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Description</TableCell>
+            <TableCell align="right">Qty</TableCell>
+            <TableCell align="right">Price</TableCell>
+            <TableCell align="right">Amount</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {invoice.lineItems.map(item => (
+            <TableRow key={item.id}>
+              <TableCell>{item.description}</TableCell>
+              <TableCell align="right">{item.quantity}</TableCell>
+              <TableCell align="right">${item.unitPrice.toFixed(2)}</TableCell>
+              <TableCell align="right">${item.amount.toFixed(2)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow>
+            <TableCell colSpan={3} align="right"><strong>Subtotal</strong></TableCell>
+            <TableCell align="right">${invoice.subtotal.toFixed(2)}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell colSpan={3} align="right">Tax ({invoice.taxRate}%)</TableCell>
+            <TableCell align="right">${invoice.taxAmount.toFixed(2)}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell colSpan={3} align="right"><strong>Total</strong></TableCell>
+            <TableCell align="right"><strong>${invoice.total.toFixed(2)}</strong></TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </Paper>
+  );
+}
+```
+
+## Recurring Invoices
+
+Set up automatic recurring invoices:
+
+```javascript
+await apiService().post('/api/Invoices/CreateRecurring', {
+  customerId: 123,
+  lineItems: [...],
+  frequency: 'monthly',  // weekly, monthly, quarterly, yearly
+  startDate: '2024-02-01',
+  endDate: null  // null = indefinite
+});
+```
+
+## Best Practices
+
+1. **Use invoice numbers** - Sequential, unique identifiers
+2. **Set payment terms** - Clear due dates and late fees
+3. **Send reminders** - Automated emails for overdue invoices
+4. **Track payments** - Record all payment transactions
+5. **Generate PDFs** - Professional formatted documents

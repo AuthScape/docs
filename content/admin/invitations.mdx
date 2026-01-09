@@ -1,0 +1,333 @@
+---
+title: Invitations
+description: Send email invitations to onboard new users with AuthScape's invitation system.
+---
+
+# Invitations
+
+AuthScape provides an invitation system that allows administrators to onboard new users via email invitations.
+
+## How It Works
+
+1. Admin creates an invitation with user email
+2. System creates an inactive user account
+3. Email is sent with a registration link
+4. User clicks link to set password and activate account
+5. User can now log in
+
+## Invitation Flow
+
+```
+Admin Panel                    Backend                       Email Service
+    │                            │                                │
+    ├── POST /Invite/InviteUsers ─►│                                │
+    │                            ├── Create AppUser (inactive) ───►│
+    │                            ├── Generate password reset token │
+    │                            ├── Send invitation email ────────►│
+    │                            │                                │
+    │◄─── Return results ────────┤                                │
+    │                            │                                │
+                                                                  │
+User clicks email link ───────────────────────────────────────────┘
+    │
+    ├── /Identity/Account/ResetPassword?token=xxx
+    │
+    ├── User sets password
+    │
+    └── Account activated
+```
+
+## Backend Implementation
+
+The `InviteController` handles invitation requests:
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class InviteController : ControllerBase
+{
+    private readonly UserManager<AppUser> _userManager;
+    private readonly IMailService _mailService;
+    private readonly IUserManagementService _userManagementService;
+
+    [HttpPost]
+    public async Task<IActionResult> InviteUsers([FromBody] InviteRequest request)
+    {
+        var currentUser = _userManagementService.GetSignedInUser();
+        var results = new List<InviteResult>();
+
+        foreach (var invite in request.Invites)
+        {
+            // Check if user already exists
+            var existingUser = await _userManager.FindByEmailAsync(invite.Email);
+            if (existingUser != null)
+            {
+                results.Add(new InviteResult
+                {
+                    Email = invite.Email,
+                    Success = false,
+                    Message = "User already exists"
+                });
+                continue;
+            }
+
+            // Create new user
+            var user = new AppUser
+            {
+                UserName = invite.Email,
+                Email = invite.Email,
+                FirstName = invite.FirstName ?? "",
+                LastName = invite.LastName ?? "",
+                IsActive = false,
+                Created = DateTimeOffset.UtcNow,
+                CompanyId = currentUser.CompanyId,
+                WhenInviteSent = DateTimeOffset.UtcNow
+            };
+
+            var createResult = await _userManager.CreateAsync(user);
+            if (!createResult.Succeeded)
+            {
+                results.Add(new InviteResult
+                {
+                    Email = invite.Email,
+                    Success = false,
+                    Message = string.Join(", ", createResult.Errors.Select(e => e.Description))
+                });
+                continue;
+            }
+
+            // Generate password reset token
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+            // Send invitation email
+            await _mailService.SendInvitationEmail(
+                user.Email,
+                user.FirstName,
+                token,
+                request.Host
+            );
+
+            results.Add(new InviteResult
+            {
+                Email = invite.Email,
+                Success = true,
+                Message = "Invitation sent"
+            });
+        }
+
+        return Ok(results);
+    }
+}
+```
+
+## Request/Response Models
+
+```csharp
+public class InviteRequest
+{
+    public string Host { get; set; }  // e.g., "https://myapp.com"
+    public List<InviteItem> Invites { get; set; }
+}
+
+public class InviteItem
+{
+    public string Email { get; set; }
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+    public long? RoleId { get; set; }
+}
+
+public class InviteResult
+{
+    public string Email { get; set; }
+    public bool Success { get; set; }
+    public string Message { get; set; }
+}
+```
+
+## Frontend: Sending Invitations
+
+Using the authService helper:
+
+```javascript
+import { authService } from 'authscape';
+
+// Send single invitation
+await authService().inviteUsers([
+  {
+    email: 'newuser@example.com',
+    firstName: 'John',
+    lastName: 'Doe'
+  }
+]);
+
+// Send multiple invitations
+await authService().inviteUsers([
+  { email: 'user1@example.com', firstName: 'User', lastName: 'One' },
+  { email: 'user2@example.com', firstName: 'User', lastName: 'Two' },
+  { email: 'user3@example.com', firstName: 'User', lastName: 'Three' }
+]);
+```
+
+Or using apiService directly:
+
+```javascript
+import { apiService } from 'authscape';
+
+const results = await apiService().post('/Invite/InviteUsers', {
+  host: window.location.origin,
+  invites: [
+    {
+      email: 'newuser@example.com',
+      firstName: 'John',
+      lastName: 'Doe',
+      roleId: 2  // Optional: assign role on invite
+    }
+  ]
+});
+
+// Check results
+results.forEach(result => {
+  if (result.success) {
+    console.log(`Invitation sent to ${result.email}`);
+  } else {
+    console.error(`Failed: ${result.email} - ${result.message}`);
+  }
+});
+```
+
+## User Management Component
+
+The UserManagement component includes invitation functionality:
+
+```jsx
+import { UserManagement } from 'authscape-usermanagement';
+
+export default function AdminUsers() {
+  return (
+    <UserManagement
+      loadedUser={true}
+      platformType={1}
+      enableInvitations={true}
+      onInvitesSent={(results) => {
+        console.log('Invitations sent:', results);
+      }}
+    />
+  );
+}
+```
+
+### Invitation Dialog
+
+The component provides:
+
+- **Single Invite** - Enter email, first name, last name
+- **Bulk Import** - CSV upload with columns: email, firstName, lastName
+- **Role Selection** - Assign role during invitation
+- **Status Tracking** - See which invitations succeeded/failed
+
+## Email Template
+
+Configure the invitation email in your mail service:
+
+```csharp
+public async Task SendInvitationEmail(
+    string email,
+    string firstName,
+    string token,
+    string host)
+{
+    var resetUrl = $"{host}/Identity/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(email)}";
+
+    var subject = "You've been invited to join our platform";
+    var body = $@"
+        <h2>Welcome, {firstName}!</h2>
+        <p>You've been invited to join our platform.</p>
+        <p>Click the link below to set your password and activate your account:</p>
+        <p><a href=""{resetUrl}"">Activate Your Account</a></p>
+        <p>This link will expire in 24 hours.</p>
+    ";
+
+    await SendEmailAsync(email, subject, body);
+}
+```
+
+## Token Configuration
+
+Configure token expiration in `Startup.cs`:
+
+```csharp
+services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    // Invitation tokens expire in 24 hours
+    options.TokenLifespan = TimeSpan.FromHours(24);
+});
+```
+
+Or via appsettings.json:
+
+```json
+{
+  "AppSettings": {
+    "DataProtectionTokenProviderOptions_TokenLifespanByDays": 1
+  }
+}
+```
+
+## Resending Invitations
+
+```javascript
+// Resend invitation to a user
+const user = await apiService().get(`/Users/GetUser?id=${userId}`);
+
+if (!user.emailConfirmed && user.whenInviteSent) {
+  // Resend invitation
+  await apiService().post('/Invite/ResendInvitation', {
+    userId: userId,
+    host: window.location.origin
+  });
+}
+```
+
+## Tracking Invitation Status
+
+```javascript
+// Get users with pending invitations
+const users = await apiService().post('/Users/GetAllUsers', {
+  offset: 0,
+  length: 50,
+  userState: 1,  // Inactive users
+  emailConfirmed: false
+});
+
+// Filter to those with invitations sent
+const pendingInvites = users.data.filter(u => u.whenInviteSent);
+
+pendingInvites.forEach(user => {
+  console.log(`${user.email} - Invited: ${user.whenInviteSent}`);
+});
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Invite/InviteUsers` | POST | Send invitations |
+| `/api/Invite/ResendInvitation` | POST | Resend to specific user |
+| `/api/Invite/CancelInvitation` | DELETE | Cancel pending invitation |
+
+## Best Practices
+
+1. **Validate email addresses** - Before sending invitations
+2. **Set reasonable token expiration** - 24-48 hours
+3. **Handle duplicates gracefully** - Return clear error messages
+4. **Track invitation history** - WhenInviteSent field
+5. **Allow resending** - Users may miss the first email
+6. **Configure spam-friendly email** - Use verified sender domain
+
+## Next Steps
+
+- [User Management](/docs/admin/user-management) - Manage invited users
+- [Roles & Permissions](/docs/admin/roles-permissions) - Assign roles to new users
+- [Email - SendGrid](/docs/services/email-sendgrid) - Configure email provider

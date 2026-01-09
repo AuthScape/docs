@@ -1,0 +1,99 @@
+---
+title: Document Management
+description: File storage, versioning, and permissions for managing documents.
+---
+
+# Document Management
+
+The Document Management module provides comprehensive file storage, versioning, access control, and document organization capabilities.
+
+## Features
+
+- File upload and storage
+- Version history
+- Access permissions
+- Folder organization
+- File search
+- Preview generation
+- Azure Blob Storage integration
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Documents/Upload` | POST | Upload file |
+| `/api/Documents/Get/{id}` | GET | Get document metadata |
+| `/api/Documents/Download/{id}` | GET | Download file |
+| `/api/Documents/List` | GET | List documents |
+| `/api/Documents/Delete/{id}` | DELETE | Delete document |
+| `/api/Documents/Versions/{id}` | GET | Get version history |
+
+## Usage
+
+### Upload Document
+
+```javascript
+import { apiService } from 'authscape';
+
+const formData = new FormData();
+formData.append('file', file);
+formData.append('folderId', '123');
+formData.append('description', 'Monthly report');
+
+const document = await apiService().post('/api/Documents/Upload', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+});
+```
+
+### List Documents
+
+```javascript
+const documents = await apiService().get('/api/Documents/List?folderId=123&search=report&type=pdf&page=1&pageSize=20');
+```
+
+### Download Document
+
+```javascript
+const response = await apiService().get('/api/Documents/Download/456', {
+  responseType: 'blob'
+});
+
+const url = window.URL.createObjectURL(response);
+const link = document.createElement('a');
+link.href = url;
+link.download = 'document.pdf';
+link.click();
+```
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "Documents": {
+      "StorageProvider": "AzureBlob",
+      "ConnectionString": "DefaultEndpointsProtocol=https;...",
+      "ContainerName": "documents",
+      "MaxFileSizeMB": 100,
+      "AllowedExtensions": [".pdf", ".doc", ".docx", ".xls", ".xlsx"]
+    }
+  }
+}
+```
+
+## Model
+
+```csharp
+public class Document
+{
+    public long Id { get; set; }
+    public string FileName { get; set; }
+    public string ContentType { get; set; }
+    public long FileSize { get; set; }
+    public string StoragePath { get; set; }
+    public long? FolderId { get; set; }
+    public long UploadedById { get; set; }
+    public int Version { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+```

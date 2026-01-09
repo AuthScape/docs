@@ -1,0 +1,116 @@
+---
+title: Chat System
+description: Real-time messaging between users with channels and direct messages.
+---
+
+# Chat System
+
+The Chat System module provides real-time messaging capabilities including channels, direct messages, and message history.
+
+## Features
+
+- Real-time messaging with SignalR
+- Channels and direct messages
+- Message history
+- Typing indicators
+- Read receipts
+- File attachments
+- Message reactions
+
+## Usage
+
+### Connect to Chat
+
+```javascript
+import * as signalR from '@microsoft/signalr';
+import { authService } from 'authscape';
+
+const connection = new signalR.HubConnectionBuilder()
+  .withUrl('/hubs/chat', {
+    accessTokenFactory: () => authService().getAccessToken()
+  })
+  .withAutomaticReconnect()
+  .build();
+
+await connection.start();
+```
+
+### Send Message
+
+```javascript
+await connection.invoke('SendMessage', {
+  channelId: '123',
+  content: 'Hello!'
+});
+```
+
+### Receive Messages
+
+```javascript
+connection.on('ReceiveMessage', (message) => {
+  console.log(`${message.sender}: ${message.content}`);
+});
+```
+
+### Get Message History
+
+```javascript
+import { apiService } from 'authscape';
+
+const messages = await apiService().get('/api/Chat/Messages?channelId=123&page=1');
+```
+
+## React Chat Component
+
+```jsx
+import { useState, useEffect, useRef } from 'react';
+import * as signalR from '@microsoft/signalr';
+import { TextField, Button, List, ListItem, Box } from '@mui/material';
+
+export default function ChatRoom({ channelId }) {
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const connectionRef = useRef(null);
+
+  useEffect(() => {
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('/hubs/chat')
+      .build();
+
+    connection.on('ReceiveMessage', (message) => {
+      setMessages(prev => [...prev, message]);
+    });
+
+    connection.start().then(() => {
+      connection.invoke('JoinChannel', channelId);
+    });
+
+    connectionRef.current = connection;
+    return () => connection.stop();
+  }, [channelId]);
+
+  async function sendMessage() {
+    await connectionRef.current.invoke('SendMessage', {
+      channelId,
+      content: newMessage
+    });
+    setNewMessage('');
+  }
+
+  return (
+    <Box>
+      <List sx={{ height: 400, overflow: 'auto' }}>
+        {messages.map((msg, i) => (
+          <ListItem key={i}>{msg.sender}: {msg.content}</ListItem>
+        ))}
+      </List>
+      <TextField
+        value={newMessage}
+        onChange={(e) => setNewMessage(e.target.value)}
+        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+      />
+      <Button onClick={sendMessage}>Send</Button>
+    </Box>
+  );
+}
+```

@@ -1,0 +1,376 @@
+---
+title: Google Maps
+description: Integrate Google Maps and Places API for address autocomplete and geocoding in AuthScape.
+---
+
+# Google Maps
+
+AuthScape includes Google Maps and Places API integration for address autocomplete, geocoding, and location services.
+
+## Configuration
+
+Add Google Maps API key to your environment:
+
+```env
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXX
+```
+
+## GoogleMapsAutoComplete Component
+
+AuthScape provides a ready-to-use address autocomplete component:
+
+```jsx
+import { GoogleMapsAutoComplete } from 'authscape/components';
+
+export default function AddressForm() {
+  const handleAddressSelected = (address) => {
+    console.log('Selected address:', address);
+    // address contains:
+    // - street: "123 Main St"
+    // - city: "San Francisco"
+    // - state: "CA"
+    // - zip: "94102"
+    // - country: "US"
+    // - lat: 37.7749
+    // - lng: -122.4194
+  };
+
+  return (
+    <GoogleMapsAutoComplete
+      onAddressSelected={handleAddressSelected}
+      _address=""
+      _city=""
+      _state=""
+      _postalCode=""
+    />
+  );
+}
+```
+
+## Component Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `onAddressSelected` | function | Callback when address is selected |
+| `_address` | string | Default street address |
+| `_city` | string | Default city |
+| `_state` | string | Default state |
+| `_postalCode` | string | Default postal code |
+
+## Implementation Details
+
+The component uses `use-places-autocomplete` for Google Places integration:
+
+```jsx
+import usePlacesAutocomplete, { getGeocode, getLatLng } from 'use-places-autocomplete';
+import useOnclickOutside from 'react-cool-onclickoutside';
+import { TextField, MenuItem, Paper } from '@mui/material';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+
+export function GoogleMapsAutoComplete({
+  onAddressSelected,
+  _address,
+  _city,
+  _state,
+  _postalCode
+}) {
+  const {
+    ready,
+    value,
+    suggestions: { status, data },
+    setValue,
+    clearSuggestions,
+  } = usePlacesAutocomplete({
+    requestOptions: {
+      types: ['address'],
+      componentRestrictions: { country: 'us' }
+    },
+    debounce: 1000,
+  });
+
+  const ref = useOnclickOutside(() => {
+    clearSuggestions();
+  });
+
+  const handleInput = (e) => {
+    setValue(e.target.value);
+  };
+
+  const handleSelect = async (description) => {
+    setValue(description, false);
+    clearSuggestions();
+
+    try {
+      const results = await getGeocode({ address: description });
+      const { lat, lng } = await getLatLng(results[0]);
+
+      // Parse address components
+      const addressComponents = results[0].address_components;
+      const parsed = parseAddressComponents(addressComponents);
+
+      onAddressSelected({
+        street: parsed.street,
+        city: parsed.city,
+        state: parsed.state,
+        zip: parsed.postalCode,
+        country: parsed.country,
+        lat,
+        lng
+      });
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  return (
+    <div ref={ref}>
+      <TextField
+        value={value}
+        onChange={handleInput}
+        disabled={!ready}
+        placeholder="Enter an address"
+        fullWidth
+      />
+      {status === 'OK' && (
+        <Paper>
+          {data.map(({ place_id, description }) => (
+            <MenuItem
+              key={place_id}
+              onClick={() => handleSelect(description)}
+            >
+              <LocationOnIcon sx={{ mr: 1 }} />
+              {description}
+            </MenuItem>
+          ))}
+        </Paper>
+      )}
+    </div>
+  );
+}
+
+function parseAddressComponents(components) {
+  const result = {
+    street: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: ''
+  };
+
+  let streetNumber = '';
+  let route = '';
+
+  for (const component of components) {
+    const type = component.types[0];
+
+    switch (type) {
+      case 'street_number':
+        streetNumber = component.long_name;
+        break;
+      case 'route':
+        route = component.long_name;
+        break;
+      case 'locality':
+        result.city = component.long_name;
+        break;
+      case 'administrative_area_level_1':
+        result.state = component.short_name;
+        break;
+      case 'postal_code':
+        result.postalCode = component.long_name;
+        break;
+      case 'country':
+        result.country = component.short_name;
+        break;
+    }
+  }
+
+  result.street = `${streetNumber} ${route}`.trim();
+  return result;
+}
+```
+
+## Usage Examples
+
+### Shipping Address Form
+
+```jsx
+import { GoogleMapsAutoComplete } from 'authscape/components';
+import { TextField, Grid, Button } from '@mui/material';
+import { useState } from 'react';
+
+export default function ShippingForm() {
+  const [address, setAddress] = useState({
+    street: '',
+    city: '',
+    state: '',
+    zip: '',
+    country: ''
+  });
+
+  const handleAddressSelected = (selectedAddress) => {
+    setAddress({
+      street: selectedAddress.street,
+      city: selectedAddress.city,
+      state: selectedAddress.state,
+      zip: selectedAddress.zip,
+      country: selectedAddress.country
+    });
+  };
+
+  return (
+    <Grid container spacing={2}>
+      <Grid item xs={12}>
+        <GoogleMapsAutoComplete
+          onAddressSelected={handleAddressSelected}
+          _address={address.street}
+        />
+      </Grid>
+
+      <Grid item xs={12}>
+        <TextField
+          label="Street Address"
+          value={address.street}
+          onChange={(e) => setAddress({ ...address, street: e.target.value })}
+          fullWidth
+        />
+      </Grid>
+
+      <Grid item xs={6}>
+        <TextField
+          label="City"
+          value={address.city}
+          onChange={(e) => setAddress({ ...address, city: e.target.value })}
+          fullWidth
+        />
+      </Grid>
+
+      <Grid item xs={3}>
+        <TextField
+          label="State"
+          value={address.state}
+          onChange={(e) => setAddress({ ...address, state: e.target.value })}
+          fullWidth
+        />
+      </Grid>
+
+      <Grid item xs={3}>
+        <TextField
+          label="ZIP Code"
+          value={address.zip}
+          onChange={(e) => setAddress({ ...address, zip: e.target.value })}
+          fullWidth
+        />
+      </Grid>
+
+      <Grid item xs={12}>
+        <Button variant="contained" onClick={() => console.log(address)}>
+          Save Address
+        </Button>
+      </Grid>
+    </Grid>
+  );
+}
+```
+
+### Store Locator with Map
+
+```jsx
+import { GoogleMapsAutoComplete } from 'authscape/components';
+import { GoogleMap, Marker, useLoadScript } from '@react-google-maps/api';
+
+export default function StoreLocator() {
+  const [center, setCenter] = useState({ lat: 37.7749, lng: -122.4194 });
+  const [selectedLocation, setSelectedLocation] = useState(null);
+
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+    libraries: ['places']
+  });
+
+  const handleAddressSelected = (address) => {
+    setCenter({ lat: address.lat, lng: address.lng });
+    setSelectedLocation(address);
+  };
+
+  if (!isLoaded) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <GoogleMapsAutoComplete onAddressSelected={handleAddressSelected} />
+
+      <GoogleMap
+        zoom={14}
+        center={center}
+        mapContainerStyle={{ width: '100%', height: '400px' }}
+      >
+        {selectedLocation && (
+          <Marker position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }} />
+        )}
+      </GoogleMap>
+    </div>
+  );
+}
+```
+
+## Backend Geocoding
+
+For server-side geocoding:
+
+```csharp
+public class GoogleGeolocationService : IGoogleGeolocationService
+{
+    private readonly string _apiKey;
+    private readonly HttpClient _httpClient;
+
+    public GoogleGeolocationService(IOptions<AppSettings> appSettings, IHttpClientFactory httpClientFactory)
+    {
+        _apiKey = appSettings.Value.GoogleMaps.ApiKey;
+        _httpClient = httpClientFactory.CreateClient();
+    }
+
+    public async Task<GeocodeResult> GeocodeAddress(string address)
+    {
+        var encodedAddress = Uri.EscapeDataString(address);
+        var url = $"https://maps.googleapis.com/maps/api/geocode/json?address={encodedAddress}&key={_apiKey}";
+
+        var response = await _httpClient.GetAsync(url);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<GoogleGeocodeResponse>(json);
+
+        if (result.Status == "OK" && result.Results.Any())
+        {
+            var location = result.Results[0].Geometry.Location;
+            return new GeocodeResult
+            {
+                Latitude = location.Lat,
+                Longitude = location.Lng,
+                FormattedAddress = result.Results[0].FormattedAddress
+            };
+        }
+
+        return null;
+    }
+}
+```
+
+## Required API Permissions
+
+Enable these APIs in Google Cloud Console:
+
+- Maps JavaScript API
+- Places API
+- Geocoding API (for server-side)
+
+## Best Practices
+
+1. **Restrict API key** - Set HTTP referrer restrictions
+2. **Use session tokens** - For billing optimization
+3. **Cache results** - Store geocoded addresses
+4. **Handle errors** - Network failures, quota limits
+5. **Debounce input** - Reduce API calls
+
+## Next Steps
+
+- [Components Overview](/docs/components/overview) - All UI components
+- [Third-Party Services](/docs/services/overview) - All integrations

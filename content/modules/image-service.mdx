@@ -1,0 +1,133 @@
+---
+title: Image Service
+description: Image upscaling, background removal, compression, and processing.
+---
+
+# Image Service
+
+The Image Service module provides AI-powered image processing including upscaling, background removal, and compression.
+
+## Features
+
+- Image upscaling (2x, 4x)
+- Background removal
+- Image compression
+- Format conversion
+- Watermarking
+- Thumbnail generation
+- EXIF data handling
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ImageService/Upscale` | POST | Upscale image |
+| `/api/ImageService/RemoveBackground` | POST | Remove background |
+| `/api/ImageService/Compress` | POST | Compress image |
+| `/api/ImageService/Convert` | POST | Convert format |
+| `/api/ImageService/Thumbnail` | POST | Generate thumbnail |
+
+## Usage
+
+### Upscale Image
+
+```javascript
+import { apiService } from 'authscape';
+
+const formData = new FormData();
+formData.append('image', file);
+formData.append('scale', '2x');  // 2x or 4x
+
+const result = await apiService().post('/api/ImageService/Upscale', formData, {
+  responseType: 'blob'
+});
+
+const upscaledUrl = URL.createObjectURL(result);
+```
+
+### Remove Background
+
+```javascript
+const formData = new FormData();
+formData.append('image', file);
+
+const result = await apiService().post('/api/ImageService/RemoveBackground', formData, {
+  responseType: 'blob'
+});
+
+// Result is PNG with transparent background
+```
+
+### Compress Image
+
+```javascript
+const formData = new FormData();
+formData.append('image', file);
+formData.append('quality', '80');  // 0-100
+formData.append('maxWidth', '1920');
+
+const result = await apiService().post('/api/ImageService/Compress', formData);
+// {
+//   url: 'https://...',
+//   originalSize: 5242880,
+//   compressedSize: 1048576,
+//   savings: '80%'
+// }
+```
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "ImageService": {
+      "Provider": "Azure",  // or "CloudflareAI"
+      "MaxFileSizeMB": 20,
+      "DefaultQuality": 85,
+      "EnableCaching": true
+    }
+  }
+}
+```
+
+## React Image Processor
+
+```jsx
+import { useState } from 'react';
+import { apiService } from 'authscape';
+import { Button, Select, MenuItem, CircularProgress } from '@mui/material';
+
+export default function ImageProcessor() {
+  const [file, setFile] = useState(null);
+  const [operation, setOperation] = useState('compress');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function process() {
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const endpoint = `/api/ImageService/${operation.charAt(0).toUpperCase() + operation.slice(1)}`;
+    const response = await apiService().post(endpoint, formData, { responseType: 'blob' });
+
+    setResult(URL.createObjectURL(response));
+    setLoading(false);
+  }
+
+  return (
+    <div>
+      <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0])} />
+      <Select value={operation} onChange={(e) => setOperation(e.target.value)}>
+        <MenuItem value="compress">Compress</MenuItem>
+        <MenuItem value="upscale">Upscale</MenuItem>
+        <MenuItem value="removeBackground">Remove Background</MenuItem>
+      </Select>
+      <Button onClick={process} disabled={!file || loading}>
+        {loading ? <CircularProgress size={24} /> : 'Process'}
+      </Button>
+      {result && <img src={result} alt="Result" style={{ maxWidth: '100%' }} />}
+    </div>
+  );
+}
+```

@@ -1,0 +1,139 @@
+---
+title: Claims Structure
+description: Understanding JWT claims in AuthScape tokens.
+---
+
+# Claims Structure
+
+AuthScape tokens contain claims that provide identity and authorization information.
+
+## Standard Claims
+
+OpenID Connect standard claims:
+
+```json
+{
+  "sub": "12345",
+  "iss": "https://auth.example.com",
+  "aud": "web-app",
+  "exp": 1704067200,
+  "iat": 1704063600,
+  "email": "user@example.com",
+  "email_verified": true,
+  "given_name": "John",
+  "family_name": "Doe"
+}
+```
+
+## AuthScape Custom Claims
+
+Additional claims for multi-tenant applications:
+
+```json
+{
+  "sub": "12345",
+  "username": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "companyId": "1",
+  "companyName": "Acme Corp",
+  "locationId": "1",
+  "locationName": "Headquarters",
+  "usersRoles": "[{\"Id\":1,\"Name\":\"Admin\"}]",
+  "userPermissions": "[{\"Id\":\"guid\",\"Name\":\"CanEdit\"}]"
+}
+```
+
+## Claim Destinations
+
+Configure which claims go to access token vs ID token:
+
+```csharp
+static IEnumerable<string> GetDestinations(Claim claim)
+{
+    switch (claim.Type)
+    {
+        case Claims.Name:
+        case Claims.Email:
+            yield return Destinations.AccessToken;
+            if (claim.Subject.HasScope(Scopes.Profile))
+                yield return Destinations.IdentityToken;
+            break;
+
+        case Claims.Role:
+            yield return Destinations.AccessToken;
+            if (claim.Subject.HasScope(Scopes.Roles))
+                yield return Destinations.IdentityToken;
+            break;
+
+        case "companyId":
+        case "locationId":
+            yield return Destinations.AccessToken;
+            break;
+
+        default:
+            yield return Destinations.AccessToken;
+            break;
+    }
+}
+```
+
+## Reading Claims in Backend
+
+```csharp
+[Authorize]
+[HttpGet]
+public IActionResult GetUserInfo()
+{
+    var userId = User.FindFirst(Claims.Subject)?.Value;
+    var email = User.FindFirst(Claims.Email)?.Value;
+    var companyId = User.FindFirst("companyId")?.Value;
+
+    // Parse JSON claims
+    var rolesJson = User.FindFirst("usersRoles")?.Value;
+    var roles = JsonSerializer.Deserialize<List<RoleInfo>>(rolesJson);
+
+    return Ok(new { userId, email, companyId, roles });
+}
+```
+
+## Reading Claims in Frontend
+
+```javascript
+function parseJwt(token) {
+  const base64Url = token.split('.')[1];
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  return JSON.parse(atob(base64));
+}
+
+const token = Cookies.get('access_token');
+const claims = parseJwt(token);
+
+console.log(claims.sub);        // User ID
+console.log(claims.email);      // Email
+console.log(claims.companyId);  // Company ID
+```
+
+## Adding Custom Claims
+
+```csharp
+public class CustomClaimsPrincipalFactory : UserClaimsPrincipalFactory<AppUser, Role>
+{
+    public override async Task<ClaimsPrincipal> CreateAsync(AppUser user)
+    {
+        var principal = await base.CreateAsync(user);
+        var identity = (ClaimsIdentity)principal.Identity;
+
+        // Add custom claims
+        identity.AddClaim(new Claim("companyId", user.CompanyId?.ToString() ?? ""));
+        identity.AddClaim(new Claim("locationId", user.LocationId?.ToString() ?? ""));
+
+        return principal;
+    }
+}
+```
+
+## Next Steps
+
+- [Claims & Identity](/docs/user-profile/claims-identity)
+- [SignedInUser Object](/docs/api-development/signed-in-user)

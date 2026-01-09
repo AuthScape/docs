@@ -1,0 +1,143 @@
+---
+title: Authentication Overview
+description: Learn about AuthScape's OpenIddict-based authentication system with OAuth2 and OpenID Connect support.
+---
+
+# Authentication Overview
+
+AuthScape uses **OpenIddict** for authentication, providing a complete OAuth2 and OpenID Connect implementation. This enables secure authentication flows for web applications, SPAs, and server-to-server communication.
+
+## Key Features
+
+- **OAuth2 Flows** - Authorization Code, Client Credentials, Refresh Tokens
+- **PKCE Support** - Proof Key for Code Exchange for SPAs
+- **Rich Claims** - User, company, location, roles, and permissions
+- **Third-Party Login** - Google, Facebook, Microsoft, GitHub
+- **Multi-Tenant** - Built-in company and location support
+
+## Authentication Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/connect/authorize` | GET | Start authorization flow |
+| `/connect/token` | POST | Exchange code for tokens |
+| `/connect/logout` | GET | End user session |
+| `/connect/userinfo` | GET/POST | Get user information |
+| `/connect/introspect` | POST | Validate access tokens |
+
+## Token Types
+
+### Access Token
+- Short-lived (1 hour default)
+- Used to access API endpoints
+- Contains user claims
+
+### Refresh Token
+- Long-lived
+- Used to get new access tokens
+- Only issued with `offline_access` scope
+
+### ID Token
+- Contains identity claims
+- Issued with OpenID Connect flows
+- Includes user profile information
+
+## Supported Scopes
+
+| Scope | Claims Included |
+|-------|-----------------|
+| `openid` | `sub` (user ID) |
+| `email` | `email`, `email_verified` |
+| `profile` | `given_name`, `family_name` |
+| `roles` | `role` (array of role names) |
+| `offline_access` | Enables refresh tokens |
+
+## Claims Structure
+
+When a user authenticates, the token includes these claims:
+
+```json
+{
+  "sub": "12345",
+  "username": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "companyId": "1",
+  "companyName": "Acme Corp",
+  "locationId": "1",
+  "locationName": "Headquarters",
+  "userPermissions": "[...]",
+  "usersRoles": "[{\"Id\":1,\"Name\":\"Admin\"}]"
+}
+```
+
+## Quick Start
+
+### 1. Configure OpenIddict
+
+In your `Startup.cs`:
+
+```csharp
+services.AddOpenIddict()
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore()
+            .UseDbContext<DatabaseContext>();
+    })
+    .AddServer(options =>
+    {
+        options.SetAuthorizationEndpointUris("/connect/authorize")
+            .SetTokenEndpointUris("/connect/token")
+            .SetLogoutEndpointUris("/connect/logout");
+
+        options.AllowAuthorizationCodeFlow()
+            .RequireProofKeyForCodeExchange()
+            .AllowClientCredentialsFlow()
+            .AllowRefreshTokenFlow();
+    });
+```
+
+### 2. Register Your Application
+
+Create an OpenIddict application for your frontend:
+
+```csharp
+await manager.CreateAsync(new OpenIddictApplicationDescriptor
+{
+    ClientId = "my-app",
+    DisplayName = "My Application",
+    RedirectUris = { new Uri("http://localhost:3000/callback") },
+    Permissions =
+    {
+        OpenIddictConstants.Permissions.Endpoints.Authorization,
+        OpenIddictConstants.Permissions.Endpoints.Token,
+        OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
+        OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
+        OpenIddictConstants.Permissions.ResponseTypes.Code,
+        OpenIddictConstants.Permissions.Scopes.Email,
+        OpenIddictConstants.Permissions.Scopes.Profile,
+        OpenIddictConstants.Permissions.Scopes.Roles,
+    }
+});
+```
+
+### 3. Authenticate from Frontend
+
+Using the AuthScape npm package:
+
+```javascript
+import { authService } from 'authscape';
+
+// Login
+authService().login(redirectUrl, dnsRecord, deviceId);
+
+// Logout
+authService().logout(redirectUrl);
+```
+
+## Next Steps
+
+- [Token Endpoints](/docs/authentication/token-endpoints) - Detailed endpoint documentation
+- [Authorization Code Flow](/docs/authentication/authorization-code) - Web application flow
+- [Client Credentials](/docs/authentication/client-credentials) - Server-to-server auth
+- [Claims Structure](/docs/authentication/claims) - Understanding token claims

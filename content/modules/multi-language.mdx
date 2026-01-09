@@ -1,0 +1,78 @@
+---
+title: Multi-language
+description: Internationalization and localization support for multi-language applications.
+---
+
+# Multi-language
+
+The Multi-language module provides internationalization (i18n) and localization (l10n) support for building applications in multiple languages.
+
+## Features
+
+- Translation management
+- Locale detection
+- RTL support
+- Date/number formatting
+- Dynamic language switching
+- Translation API
+
+## Usage
+
+### Get Translations
+
+```javascript
+import { apiService } from 'authscape';
+
+const translations = await apiService().get('/api/Translations/Get?locale=es');
+// { 'welcome': 'Bienvenido', 'login': 'Iniciar sesión', ... }
+```
+
+### i18n Hook
+
+```jsx
+import { createContext, useContext, useState } from 'react';
+
+const I18nContext = createContext();
+
+export function I18nProvider({ children }) {
+  const [locale, setLocale] = useState('en');
+  const [translations, setTranslations] = useState({});
+
+  async function changeLocale(newLocale) {
+    const data = await apiService().get(`/api/Translations/Get?locale=${newLocale}`);
+    setTranslations(data);
+    setLocale(newLocale);
+  }
+
+  const t = (key) => translations[key] || key;
+
+  return (
+    <I18nContext.Provider value={{ locale, t, changeLocale }}>
+      {children}
+    </I18nContext.Provider>
+  );
+}
+
+export const useI18n = () => useContext(I18nContext);
+```
+
+### Usage in Components
+
+```jsx
+import { useI18n } from './I18nProvider';
+
+export default function Header() {
+  const { t, changeLocale } = useI18n();
+
+  return (
+    <header>
+      <h1>{t('welcome')}</h1>
+      <select onChange={(e) => changeLocale(e.target.value)}>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="fr">Français</option>
+      </select>
+    </header>
+  );
+}
+```

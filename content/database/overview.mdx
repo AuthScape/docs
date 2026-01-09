@@ -1,0 +1,115 @@
+---
+title: Database Providers Overview
+description: Learn how to switch between SQL Server, PostgreSQL, SQLite, and other database providers in AuthScape.
+---
+
+# Database Providers Overview
+
+AuthScape supports multiple database providers through Entity Framework Core. The provider is **automatically detected** from your connection string format, so you don't need to specify it explicitly.
+
+## Supported Providers
+
+| Provider | Status | Use Case |
+|----------|--------|----------|
+| SQL Server | Supported | Production workloads, enterprise |
+| PostgreSQL | Supported | Open source, cloud-native |
+| SQLite | Supported | Development, testing, small apps |
+| MySQL | Coming Soon | Waiting for .NET 10 compatible Pomelo |
+
+## Auto-Detection
+
+AuthScape analyzes your connection string to determine which database provider to use:
+
+```csharp
+// Automatically uses SQL Server
+"DatabaseContext": "Server=localhost;Database=AuthScape;Trusted_Connection=true;"
+
+// Automatically uses PostgreSQL
+"DatabaseContext": "Host=localhost;Database=authscape;Username=postgres;Password=pass"
+
+// Automatically uses SQLite
+"DatabaseContext": "Data Source=AuthScape.db"
+```
+
+## How It Works
+
+The `DatabaseProviderExtensions.DetectProvider()` method examines your connection string for provider-specific patterns:
+
+**SQLite Detection:**
+- Contains `Data Source=` with `.db` extension
+- Contains `:memory:` or `Mode=Memory`
+
+**PostgreSQL Detection:**
+- Contains `Host=` with `Username=` or `Password=`
+
+**SQL Server Detection (Default):**
+- Contains `Server=` with `User Id=` or `Trusted_Connection=`
+- Contains Azure SQL patterns (`.database.windows.net`)
+- Contains SQL Express patterns (`\SQLEXPRESS`)
+
+## Configuration
+
+### In appsettings.json
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Your connection string here"
+  }
+}
+```
+
+### Programmatic Configuration
+
+```csharp
+// Using AppSettings (recommended)
+services.AddAuthScapeDatabase(appSettings);
+
+// Using connection string directly
+services.AddAuthScapeDatabase(connectionString);
+
+// With options
+services.AddAuthScapeDatabase(appSettings,
+    enableSensitiveDataLogging: false,
+    useOpenIddict: true,
+    lifetime: ServiceLifetime.Scoped);
+```
+
+## Retry Policies
+
+SQL Server and PostgreSQL connections include automatic retry policies:
+
+- **Max Retry Count:** 10 attempts
+- **Max Retry Delay:** 30 seconds
+- **Handles:** Transient network failures, connection timeouts
+
+SQLite does not include retry policies as it's file-based.
+
+## Migrations
+
+Entity Framework Core migrations work with all supported providers. However, you may need provider-specific migration files:
+
+```bash
+# Generate migration for SQL Server
+dotnet ef migrations add InitialCreate
+
+# Apply migrations
+dotnet ef database update
+```
+
+## Switching Providers
+
+To switch database providers:
+
+1. Update your connection string in `appsettings.json`
+2. Generate new migrations for the target provider (if needed)
+3. Run the migrations
+4. Restart your application
+
+The provider will be automatically detected from the new connection string.
+
+## Next Steps
+
+- [SQL Server](/docs/database/sqlserver) - SQL Server connection strings
+- [PostgreSQL](/docs/database/postgresql) - PostgreSQL connection strings
+- [SQLite](/docs/database/sqlite) - SQLite for development

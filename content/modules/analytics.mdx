@@ -1,0 +1,304 @@
+---
+title: Analytics
+description: Track user behavior with Google Analytics, Microsoft Clarity, and database analytics.
+---
+
+# Analytics
+
+The Analytics module provides comprehensive tracking capabilities including Google Analytics, Microsoft Clarity for heatmaps, and database-stored analytics for custom reporting.
+
+## Features
+
+- Google Analytics integration
+- Microsoft Clarity heatmaps and session recordings
+- Database-stored analytics for custom queries
+- Page view tracking
+- Event tracking
+- Conversion tracking
+- Custom dimensions and metrics
+
+## Providers
+
+| Provider | Best For |
+|----------|----------|
+| **Google Analytics** | Traffic analysis, marketing attribution |
+| **Microsoft Clarity** | Heatmaps, session recordings, UX insights |
+| **Database** | Custom queries, internal dashboards |
+
+## Configuration
+
+### appsettings.json
+
+```json
+{
+  "AppSettings": {
+    "Analytics": {
+      "GoogleAnalyticsId": "G-XXXXXXXXXX",
+      "ClarityProjectId": "xxxxxxxxxx",
+      "DatabaseTracking": true
+    }
+  }
+}
+```
+
+## Google Analytics
+
+### Setup in Next.js
+
+```javascript
+// pages/_app.js
+import Script from 'next/script';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <>
+      <Script
+        src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`}
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}');
+        `}
+      </Script>
+      <Component {...pageProps} />
+    </>
+  );
+}
+```
+
+### Track Events
+
+```javascript
+// Track custom events
+function trackEvent(eventName, eventParams) {
+  if (typeof gtag !== 'undefined') {
+    gtag('event', eventName, eventParams);
+  }
+}
+
+// Usage
+trackEvent('purchase', {
+  transaction_id: 'T12345',
+  value: 99.99,
+  currency: 'USD',
+  items: [{ item_name: 'Premium Plan' }]
+});
+
+trackEvent('sign_up', {
+  method: 'email'
+});
+```
+
+## Microsoft Clarity
+
+### Setup
+
+```javascript
+// pages/_app.js
+import Script from 'next/script';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <>
+      <Script id="microsoft-clarity" strategy="afterInteractive">
+        {`
+          (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+          })(window, document, "clarity", "script", "${process.env.NEXT_PUBLIC_CLARITY_ID}");
+        `}
+      </Script>
+      <Component {...pageProps} />
+    </>
+  );
+}
+```
+
+### Identify Users
+
+```javascript
+// After user logs in
+if (typeof clarity !== 'undefined') {
+  clarity('set', 'userId', user.id);
+  clarity('set', 'userEmail', user.email);
+  clarity('set', 'companyId', user.companyId);
+}
+```
+
+## Database Analytics
+
+### Track Events to Database
+
+```javascript
+import { apiService } from 'authscape';
+
+async function trackEvent(eventName, properties) {
+  await apiService().post('/api/Analytics/TrackEvent', {
+    event: eventName,
+    properties,
+    timestamp: new Date().toISOString(),
+    page: window.location.pathname
+  });
+}
+
+// Track page views
+trackEvent('page_view', {
+  title: document.title,
+  referrer: document.referrer
+});
+
+// Track custom events
+trackEvent('button_click', {
+  buttonId: 'signup-cta',
+  section: 'hero'
+});
+```
+
+### Backend Implementation
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+public class AnalyticsController : ControllerBase
+{
+    private readonly IAnalyticsService _analytics;
+
+    [HttpPost]
+    public async Task<IActionResult> TrackEvent([FromBody] AnalyticsEvent e)
+    {
+        await _analytics.TrackAsync(e);
+        return Ok();
+    }
+
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetPageViews(DateTime start, DateTime end)
+    {
+        var data = await _analytics.GetPageViewsAsync(start, end);
+        return Ok(data);
+    }
+
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetTopPages(int limit = 10)
+    {
+        var pages = await _analytics.GetTopPagesAsync(limit);
+        return Ok(pages);
+    }
+}
+```
+
+### Analytics Model
+
+```csharp
+public class AnalyticsEvent
+{
+    public long Id { get; set; }
+    public string Event { get; set; }
+    public string Page { get; set; }
+    public string Properties { get; set; }  // JSON
+    public long? UserId { get; set; }
+    public string SessionId { get; set; }
+    public string IpAddress { get; set; }
+    public string UserAgent { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+```
+
+## Custom Dashboard Queries
+
+### Get Page Views by Day
+
+```csharp
+public async Task<List<DailyPageViews>> GetPageViewsByDay(DateTime start, DateTime end)
+{
+    return await _context.AnalyticsEvents
+        .Where(e => e.Event == "page_view")
+        .Where(e => e.Timestamp >= start && e.Timestamp <= end)
+        .GroupBy(e => e.Timestamp.Date)
+        .Select(g => new DailyPageViews
+        {
+            Date = g.Key,
+            Views = g.Count(),
+            UniqueUsers = g.Select(e => e.UserId).Distinct().Count()
+        })
+        .OrderBy(d => d.Date)
+        .ToListAsync();
+}
+```
+
+### Get Conversion Funnel
+
+```csharp
+public async Task<FunnelData> GetConversionFunnel(DateTime start, DateTime end)
+{
+    var events = await _context.AnalyticsEvents
+        .Where(e => e.Timestamp >= start && e.Timestamp <= end)
+        .Where(e => new[] { "page_view", "signup_start", "signup_complete", "purchase" }
+            .Contains(e.Event))
+        .GroupBy(e => e.Event)
+        .Select(g => new { Event = g.Key, Count = g.Count() })
+        .ToListAsync();
+
+    return new FunnelData
+    {
+        PageViews = events.FirstOrDefault(e => e.Event == "page_view")?.Count ?? 0,
+        SignupStarts = events.FirstOrDefault(e => e.Event == "signup_start")?.Count ?? 0,
+        SignupCompletes = events.FirstOrDefault(e => e.Event == "signup_complete")?.Count ?? 0,
+        Purchases = events.FirstOrDefault(e => e.Event == "purchase")?.Count ?? 0
+    };
+}
+```
+
+## Analytics Hook
+
+Create a reusable analytics hook:
+
+```javascript
+// hooks/useAnalytics.js
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { apiService } from 'authscape';
+
+export function useAnalytics() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleRouteChange = (url) => {
+      // Track page view
+      apiService().post('/api/Analytics/TrackEvent', {
+        event: 'page_view',
+        page: url,
+        timestamp: new Date().toISOString()
+      });
+    };
+
+    router.events.on('routeChangeComplete', handleRouteChange);
+    return () => router.events.off('routeChangeComplete', handleRouteChange);
+  }, [router.events]);
+
+  const trackEvent = (eventName, properties) => {
+    apiService().post('/api/Analytics/TrackEvent', {
+      event: eventName,
+      properties,
+      page: router.asPath,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  return { trackEvent };
+}
+```
+
+## Best Practices
+
+1. **Don't over-track** - Focus on meaningful events
+2. **Use consistent naming** - `category_action` format (e.g., `button_click`)
+3. **Respect privacy** - Get consent before tracking
+4. **Batch requests** - Queue events and send periodically
+5. **Clean old data** - Set retention policies for database analytics

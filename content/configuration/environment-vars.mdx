@@ -1,0 +1,86 @@
+---
+title: Environment Variables
+description: Configure AuthScape using environment variables.
+---
+
+# Environment Variables
+
+Environment variables provide a secure way to configure AuthScape, especially in containerized and cloud environments.
+
+## Setting Environment Variables
+
+### Windows
+
+```powershell
+# Temporary (current session)
+$env:ConnectionStrings__DefaultConnection = "Server=localhost;..."
+
+# Permanent (user level)
+[Environment]::SetEnvironmentVariable("AppSettings__Stripe__SecretKey", "sk_xxx", "User")
+```
+
+### Linux/Mac
+
+```bash
+# Temporary
+export ConnectionStrings__DefaultConnection="Server=localhost;..."
+
+# Permanent (add to ~/.bashrc or ~/.zshrc)
+echo 'export AppSettings__Stripe__SecretKey="sk_xxx"' >> ~/.bashrc
+```
+
+## Naming Convention
+
+Environment variables use double underscores (`__`) to represent hierarchy:
+
+| appsettings.json | Environment Variable |
+|-----------------|---------------------|
+| `ConnectionStrings.DefaultConnection` | `ConnectionStrings__DefaultConnection` |
+| `AppSettings.Stripe.SecretKey` | `AppSettings__Stripe__SecretKey` |
+| `Logging.LogLevel.Default` | `Logging__LogLevel__Default` |
+
+## Docker Configuration
+
+```dockerfile
+ENV ConnectionStrings__DefaultConnection="Server=db;Database=AuthScape;..."
+ENV AppSettings__BaseUri="https://api.example.com"
+```
+
+Or with docker-compose:
+
+```yaml
+services:
+  api:
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=db;Database=AuthScape;...
+      - AppSettings__BaseUri=https://api.example.com
+```
+
+## Azure App Service
+
+Set in Configuration > Application settings:
+
+| Name | Value |
+|------|-------|
+| `ConnectionStrings__DefaultConnection` | `Server=...` |
+| `AppSettings__Stripe__SecretKey` | `sk_live_xxx` |
+
+## Loading Priority
+
+Environment variables override appsettings.json:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Order of precedence (highest to lowest):
+// 1. Command-line arguments
+// 2. Environment variables
+// 3. User secrets (Development only)
+// 4. appsettings.[Environment].json
+// 5. appsettings.json
+```
+
+## Next Steps
+
+- [Azure Key Vault](/docs/configuration/azure-keyvault)
+- [AWS Secrets Manager](/docs/configuration/aws-secrets)

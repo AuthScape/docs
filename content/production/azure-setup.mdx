@@ -1,0 +1,320 @@
+---
+title: Azure Setup
+description: Configure Azure resources for hosting AuthScape in production.
+---
+
+# Azure Setup
+
+This guide covers setting up Azure resources for hosting AuthScape, including App Services, SQL Database, and supporting services.
+
+## Architecture Overview
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                         Azure Resource Group                        │
+│                                                                      │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────────────────┐ │
+│  │  App Service │    │  App Service │    │   Azure SQL Database  │ │
+│  │    (API)     │    │ (Next.js/SWA)│    │                       │ │
+│  │  Linux Plan  │    │              │    │    S0 or higher       │ │
+│  └──────────────┘    └──────────────┘    └───────────────────────┘ │
+│         │                   │                       │               │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────────────────┐ │
+│  │   Key Vault  │    │ Blob Storage │    │  Application Insights │ │
+│  │   (Secrets)  │    │   (Files)    │    │     (Monitoring)      │ │
+│  └──────────────┘    └──────────────┘    └───────────────────────┘ │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+## Resource Group
+
+Create a resource group for all AuthScape resources:
+
+```bash
+# Create resource group
+az group create \
+  --name authscape-production \
+  --location eastus
+```
+
+## Azure SQL Database
+
+### Create SQL Server
+
+```bash
+# Create SQL Server
+az sql server create \
+  --name authscape-sql-server \
+  --resource-group authscape-production \
+  --location eastus \
+  --admin-user sqladmin \
+  --admin-password 'YourSecurePassword123!'
+
+# Create database
+az sql db create \
+  --name authscape-db \
+  --server authscape-sql-server \
+  --resource-group authscape-production \
+  --edition Standard \
+  --service-objective S0
+
+# Allow Azure services
+az sql server firewall-rule create \
+  --server authscape-sql-server \
+  --resource-group authscape-production \
+  --name AllowAzureServices \
+  --start-ip-address 0.0.0.0 \
+  --end-ip-address 0.0.0.0
+```
+
+### Connection String
+
+```
+Server=tcp:authscape-sql-server.database.windows.net,1433;
+Database=authscape-db;
+User ID=sqladmin;
+Password=YourSecurePassword123!;
+Encrypt=True;
+TrustServerCertificate=False;
+```
+
+## App Service (API)
+
+### Create App Service Plan
+
+```bash
+# Create Linux App Service Plan
+az appservice plan create \
+  --name authscape-plan \
+  --resource-group authscape-production \
+  --location eastus \
+  --sku P1v3 \
+  --is-linux
+
+# Create Web App
+az webapp create \
+  --name authscape-api \
+  --resource-group authscape-production \
+  --plan authscape-plan \
+  --runtime "DOTNETCORE:8.0"
+```
+
+### Configure App Settings
+
+```bash
+# Set connection string
+az webapp config connection-string set \
+  --name authscape-api \
+  --resource-group authscape-production \
+  --connection-string-type SQLAzure \
+  --settings DatabaseContext="Server=tcp:authscape-sql-server.database.windows.net..."
+
+# Set app settings
+az webapp config appsettings set \
+  --name authscape-api \
+  --resource-group authscape-production \
+  --settings \
+    ASPNETCORE_ENVIRONMENT="Production" \
+    AppSettings__BaseUrl="https://authscape-api.azurewebsites.net"
+```
+
+### Enable Managed Identity
+
+```bash
+# Enable system-assigned identity
+az webapp identity assign \
+  --name authscape-api \
+  --resource-group authscape-production
+```
+
+## Azure Key Vault
+
+### Create Key Vault
+
+```bash
+# Create Key Vault
+az keyvault create \
+  --name authscape-vault \
+  --resource-group authscape-production \
+  --location eastus
+
+# Grant App Service access
+az keyvault set-policy \
+  --name authscape-vault \
+  --object-id <APP_SERVICE_IDENTITY_ID> \
+  --secret-permissions get list
+```
+
+### Add Secrets
+
+```bash
+# Add secrets
+az keyvault secret set \
+  --vault-name authscape-vault \
+  --name "StripeSecretKey" \
+  --value "sk_live_..."
+
+az keyvault secret set \
+  --vault-name authscape-vault \
+  --name "SendGridApiKey" \
+  --value "SG..."
+```
+
+### Configure App to Use Key Vault
+
+```bash
+az webapp config appsettings set \
+  --name authscape-api \
+  --resource-group authscape-production \
+  --settings \
+    AppSettings__Stripe__SecretKey="@Microsoft.KeyVault(VaultName=authscape-vault;SecretName=StripeSecretKey)"
+```
+
+## Static Web App (Next.js)
+
+### Create Static Web App
+
+```bash
+az staticwebapp create \
+  --name authscape-frontend \
+  --resource-group authscape-production \
+  --source https://github.com/your-org/authscape \
+  --location eastus2 \
+  --branch main \
+  --app-location "AuthScape.NextJS" \
+  --output-location ".next"
+```
+
+### Configure Environment Variables
+
+```bash
+az staticwebapp appsettings set \
+  --name authscape-frontend \
+  --setting-names \
+    NEXT_PUBLIC_API_URL="https://authscape-api.azurewebsites.net" \
+    NEXT_PUBLIC_CLIENT_ID="authscape-spa"
+```
+
+## Blob Storage
+
+### Create Storage Account
+
+```bash
+# Create storage account
+az storage account create \
+  --name authscapestorage \
+  --resource-group authscape-production \
+  --location eastus \
+  --sku Standard_LRS
+
+# Create container for uploads
+az storage container create \
+  --name uploads \
+  --account-name authscapestorage \
+  --public-access off
+```
+
+### Get Connection String
+
+```bash
+az storage account show-connection-string \
+  --name authscapestorage \
+  --resource-group authscape-production
+```
+
+## Application Insights
+
+### Create Application Insights
+
+```bash
+az monitor app-insights component create \
+  --app authscape-insights \
+  --location eastus \
+  --resource-group authscape-production \
+  --application-type web
+
+# Get connection string
+az monitor app-insights component show \
+  --app authscape-insights \
+  --resource-group authscape-production \
+  --query connectionString
+```
+
+### Connect to App Service
+
+```bash
+az webapp config appsettings set \
+  --name authscape-api \
+  --resource-group authscape-production \
+  --settings \
+    APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=..."
+```
+
+## Custom Domain
+
+### Add Custom Domain
+
+```bash
+# Add custom domain
+az webapp config hostname add \
+  --webapp-name authscape-api \
+  --resource-group authscape-production \
+  --hostname api.yourapp.com
+
+# Create managed certificate
+az webapp config ssl create \
+  --name authscape-api \
+  --resource-group authscape-production \
+  --hostname api.yourapp.com
+```
+
+### DNS Configuration
+
+Add these DNS records:
+
+| Type | Name | Value |
+|------|------|-------|
+| CNAME | api | authscape-api.azurewebsites.net |
+| TXT | asuid.api | (verification ID from Azure) |
+
+## Scaling
+
+### Auto-Scale Rules
+
+```bash
+az monitor autoscale create \
+  --resource-group authscape-production \
+  --resource authscape-plan \
+  --resource-type Microsoft.Web/serverfarms \
+  --name autoscale-cpu \
+  --min-count 2 \
+  --max-count 10 \
+  --count 2
+
+az monitor autoscale rule create \
+  --resource-group authscape-production \
+  --autoscale-name autoscale-cpu \
+  --condition "CpuPercentage > 70 avg 5m" \
+  --scale out 1
+```
+
+## Cost Estimation
+
+| Resource | SKU | Estimated Monthly Cost |
+|----------|-----|------------------------|
+| App Service Plan | P1v3 | ~$140 |
+| SQL Database | S0 | ~$15 |
+| Static Web App | Free | $0 |
+| Key Vault | Standard | ~$3 |
+| Application Insights | 5GB/month | $0 |
+| Storage | Standard LRS | ~$5 |
+| **Total** | | **~$163/month** |
+
+## Best Practices
+
+1. **Use Managed Identities** instead of connection strings where possible
+2. **Enable diagnostics logging** for troubleshooting
+3. **Set up alerts** for errors and performance issues
+4. **Use deployment slots** for zero-downtime deployments
+5. **Configure backup** for SQL database
+6. **Enable DDoS protection** for production workloads

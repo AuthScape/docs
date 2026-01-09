@@ -1,0 +1,107 @@
+---
+title: Configuration Overview
+description: Learn how AuthScape's configuration system works with multiple providers and priority ordering.
+---
+
+# Configuration Overview
+
+AuthScape provides a flexible, centralized configuration system that supports multiple configuration sources. This allows you to manage settings across development, staging, and production environments with ease.
+
+## Configuration Sources
+
+AuthScape loads configuration from multiple sources in a specific priority order. Higher priority sources override lower priority ones.
+
+| Priority | Source | Description |
+|----------|--------|-------------|
+| 1 (Lowest) | `authscape.json` | Shared base configuration |
+| 2 | `authscape.{Env}.json` | Environment-specific shared config |
+| 3 | `appsettings.json` | Project-specific configuration |
+| 4 | `appsettings.{Env}.json` | Project + environment specific |
+| 5 | User Secrets | Local development secrets |
+| 6 | Environment Variables | Container/CI deployments |
+| 7 (Highest) | Azure Key Vault / AWS | Production secrets |
+
+## How It Works
+
+When your application starts, the configuration system:
+
+1. **Discovers shared config** by walking up the directory tree to find `authscape.json`
+2. **Loads project config** from `appsettings.json` in your project
+3. **Applies environment overrides** based on `ASPNETCORE_ENVIRONMENT`
+4. **Loads secrets** from User Secrets (development) or cloud providers (production)
+5. **Validates settings** at startup (optional)
+
+## Basic Usage
+
+In your `Program.cs`, add the AuthScape configuration:
+
+```csharp
+Host.CreateDefaultBuilder(args)
+    .ConfigureAppConfiguration((context, config) =>
+    {
+        config.AddAuthScapeConfiguration(context.HostingEnvironment);
+    })
+    .ConfigureWebHostDefaults(webBuilder =>
+    {
+        webBuilder.UseStartup<Startup>();
+    });
+```
+
+Then in your `Startup.cs`:
+
+```csharp
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddAuthScapeSettings(Configuration, options =>
+    {
+        options.ValidateOnStartup = true;
+    });
+}
+```
+
+## Configuration Options
+
+You can customize the configuration behavior:
+
+```csharp
+config.AddAuthScapeConfiguration(environment, options =>
+{
+    // Enable/disable shared configuration
+    options.UseSharedConfiguration = true;
+
+    // Custom path to shared config folder
+    options.SharedConfigurationPath = "/path/to/config";
+
+    // Enable validation at startup
+    options.ValidateOnStartup = true;
+
+    // Enable hot reload of JSON files
+    options.EnableHotReload = true;
+
+    // Environment variable prefix (default: AUTHSCAPE_)
+    options.EnvironmentVariablePrefix = "AUTHSCAPE_";
+
+    // Azure Key Vault configuration
+    options.AzureKeyVault = new AzureKeyVaultOptions
+    {
+        Enabled = true,
+        VaultUri = "https://your-vault.vault.azure.net/",
+        UseManagedIdentity = true
+    };
+
+    // AWS Secrets Manager configuration
+    options.AwsSecretsManager = new AwsSecretsManagerOptions
+    {
+        Enabled = true,
+        SecretId = "authscape/production",
+        Region = "us-east-1"
+    };
+});
+```
+
+## Next Steps
+
+- [appsettings.json](/docs/configuration/appsettings) - Learn about all available settings
+- [Shared Config](/docs/configuration/shared-config) - Set up shared configuration
+- [Environment Variables](/docs/configuration/environment-vars) - Use environment variables
+- [Azure Key Vault](/docs/configuration/azure-keyvault) - Secure secrets in Azure

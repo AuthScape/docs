@@ -1,0 +1,300 @@
+---
+title: User Management
+description: Manage users with AuthScape's user management system including CRUD operations and the React admin component.
+---
+
+# User Management
+
+AuthScape provides comprehensive user management through backend services and a ready-to-use React admin component.
+
+## User Model (AppUser)
+
+The `AppUser` model extends ASP.NET Identity with additional properties:
+
+```csharp
+public class AppUser : IdentityUser<long>
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string? locale { get; set; }
+    public DateTimeOffset Created { get; set; }
+    public DateTimeOffset? Archived { get; set; }
+    public DateTimeOffset LastLoggedIn { get; set; }
+    public bool IsActive { get; set; }
+    public string? PhotoUri { get; set; }
+    public long? CompanyId { get; set; }
+    public long? LocationId { get; set; }
+    public DateTimeOffset? WhenInviteSent { get; set; }
+    public Location? Location { get; set; }
+    public Company? Company { get; set; }
+    public string? Culture { get; set; }
+    public string? Country { get; set; }
+    public string? TimeZoneId { get; set; }
+
+    // Payment integration
+    public ICollection<Wallet> Cards { get; set; }
+    public ICollection<StoreCredit> StoreCredits { get; set; }
+
+    // Multi-location support
+    public ICollection<UserLocations> UserLocations { get; set; }
+
+    // FIDO2/WebAuthn credentials
+    public virtual ICollection<Fido2Credential> Credentials { get; set; }
+
+    // Populated at runtime (not stored in DB)
+    [NotMapped]
+    public string? Permissions { get; set; }
+    [NotMapped]
+    public string? Roles { get; set; }
+    [NotMapped]
+    public List<CustomFieldResult> CustomFields { get; set; }
+}
+```
+
+## SignedInUser Object
+
+When a user is authenticated, their info is available via `SignedInUser`:
+
+```csharp
+public class SignedInUser
+{
+    public long Id { get; set; }
+    public string Email { get; set; }
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public Guid? Identifier { get; set; }
+    public long? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+    public long? LocationId { get; set; }
+    public string? LocationName { get; set; }
+    public string locale { get; set; }
+    public List<QueryRole> Roles { get; set; }
+    public List<Permission> Permissions { get; set; }
+}
+```
+
+## Getting the Current User
+
+In any controller, inject `IUserManagementService`:
+
+```csharp
+[Route("api/[controller]")]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class MyController : ControllerBase
+{
+    private readonly IUserManagementService _userManagementService;
+
+    public MyController(IUserManagementService userManagementService)
+    {
+        _userManagementService = userManagementService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetData()
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        // Access user properties
+        var userId = user.Id;
+        var companyId = user.CompanyId;
+        var roles = user.Roles;
+        var permissions = user.Permissions;
+
+        return Ok(new { userId, companyId });
+    }
+}
+```
+
+## User Service API
+
+The `IUserService` provides user CRUD operations:
+
+```csharp
+public interface IUserService
+{
+    Task<PagedList<UserSummary>> GetAllUsers(int offset, int length, int userState);
+    Task<AppUser?> GetUser(long userId);
+    Task RestoreAccount(long userId);
+    Task ArchiveAccount(long userId);
+}
+```
+
+### Example: Get All Users with Pagination
+
+```csharp
+[HttpPost("GetAllUsers")]
+public async Task<IActionResult> GetAllUsers([FromBody] UserParam param)
+{
+    // userState: 0 = Active, 1 = Inactive, 2 = Archived
+    var users = await _userService.GetAllUsers(
+        param.Offset,
+        param.Length,
+        param.UserState
+    );
+
+    return Ok(new
+    {
+        data = users.Data,
+        totalCount = users.TotalCount,
+        activeCount = users.ActiveCount,
+        inactiveCount = users.InactiveCount,
+        archivedCount = users.ArchivedCount
+    });
+}
+```
+
+## React User Management Component
+
+AuthScape includes a ready-to-use user management admin panel:
+
+```jsx
+import { UserManagement } from 'authscape-usermanagement';
+
+export default function AdminUsersPage() {
+  return (
+    <UserManagement
+      loadedUser={true}
+      platformType={1}
+      onUserSelected={(user) => {
+        console.log('Selected user:', user);
+      }}
+    />
+  );
+}
+```
+
+### Component Features
+
+- **User List** - DataGrid with pagination, sorting, filtering
+- **Search** - Filter by name, email, company, role
+- **Status Filters** - Active, Inactive, Archived tabs
+- **User Editor** - Edit user details in modal
+- **Role Assignment** - Assign/remove roles
+- **Permission Assignment** - Assign/remove permissions
+- **Password Reset** - Change user passwords
+- **Archive/Restore** - Soft delete users
+- **CSV Upload** - Bulk user import
+
+### DataGrid Columns
+
+The user management grid displays:
+
+| Column | Description |
+|--------|-------------|
+| Full Name | First + Last name |
+| Status | Active/Inactive badge |
+| Email | User email |
+| Company | Associated company |
+| Phone | Phone number |
+| Location | Primary location |
+| Roles | Assigned roles |
+| Permissions | Assigned permissions |
+
+## User Editor Component
+
+Edit individual users with the UserEditor component:
+
+```jsx
+import { UserEditor } from 'authscape-usermanagement';
+import { useRef } from 'react';
+
+export default function EditUserPage({ userId }) {
+  const editorRef = useRef();
+
+  return (
+    <UserEditor
+      ref={editorRef}
+      userId={userId}
+      platformType={1}
+      onSaved={() => {
+        console.log('User saved');
+      }}
+    />
+  );
+}
+```
+
+### Editor Tabs
+
+1. **Basic Info** - Name, email, phone, company, location
+2. **Custom Fields** - Dynamic fields defined by admin
+3. **Roles & Permissions** - Role and permission assignment
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/UserManagement/Get` | GET | Get current user |
+| `/api/Users/GetUser` | GET | Get user by ID |
+| `/api/Users/GetAllUsers` | POST | List users with pagination |
+| `/api/Users/ArchiveUser` | PUT | Archive a user |
+| `/api/Users/RestoreUser` | PUT | Restore archived user |
+| `/api/UserManagement/EditUser` | PUT | Update user details |
+| `/api/UserManagement/ChangePassword` | POST | Change user password |
+| `/api/UserManagement/GetRoles` | GET | List available roles |
+| `/api/UserManagement/GetPermissions` | GET | List available permissions |
+
+## Frontend API Calls
+
+Using the authscape npm package:
+
+```javascript
+import { apiService } from 'authscape';
+
+// Get current user
+const currentUser = await apiService().get('/UserManagement/Get');
+
+// Get user by ID
+const user = await apiService().get(`/Users/GetUser?id=${userId}`);
+
+// List all users
+const users = await apiService().post('/Users/GetAllUsers', {
+  offset: 0,
+  length: 50,
+  userState: 0, // 0=Active, 1=Inactive, 2=Archived
+  searchQuery: '',
+  roleId: null,
+  companyId: null
+});
+
+// Archive user
+await apiService().put(`/Users/ArchiveUser?userId=${userId}`);
+
+// Restore user
+await apiService().put(`/Users/RestoreUser?userId=${userId}`);
+
+// Update user
+await apiService().put('/UserManagement/EditUser', {
+  id: userId,
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'john@example.com',
+  phoneNumber: '+1234567890',
+  companyId: 1,
+  locationId: 1,
+  roleIds: [1, 2],
+  permissionIds: ['guid-1', 'guid-2']
+});
+```
+
+## Checking Permissions in Frontend
+
+```javascript
+import { authService } from 'authscape';
+
+// Check if user has a specific permission
+const user = await apiService().get('/UserManagement/Get');
+
+const hasPermission = user.permissions.some(p => p.name === 'CanEditUsers');
+const hasRole = user.roles.some(r => r.name === 'Admin');
+
+if (hasPermission) {
+  // Show edit button
+}
+```
+
+## Next Steps
+
+- [Roles & Permissions](/docs/admin/roles-permissions) - Configure RBAC
+- [Custom Fields](/docs/admin/custom-fields) - Extend user profiles
+- [Invitations](/docs/admin/invitations) - Email-based user onboarding

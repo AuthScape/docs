@@ -1,0 +1,392 @@
+---
+title: RichTextEditor
+description: WYSIWYG rich text editor built on Lexical with Material-UI toolbar.
+---
+
+# RichTextEditor
+
+The RichTextEditor component provides a full-featured WYSIWYG text editing experience using [Lexical](https://lexical.dev/) with a Material-UI toolbar.
+
+## Features
+
+- Heading levels (H1-H6)
+- Bold, italic, underline, strikethrough
+- Bullet and numbered lists
+- Blockquotes
+- Code formatting
+- Link insertion/removal
+- Undo/redo history
+- HTML import/export
+- Disabled/read-only mode
+
+## Installation
+
+The RichTextEditor uses Lexical internally. It's included in the authscape package:
+
+```bash
+npm install authscape
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `html` | string | `''` | Initial HTML content |
+| `onSave` | function | required | Callback with HTML when Save clicked |
+| `height` | number | `400` | Editor height in pixels |
+| `isDisabled` | boolean | `false` | Disable editing |
+
+## Basic Usage
+
+```jsx
+import { RichTextEditor } from 'authscape/components';
+import { useState } from 'react';
+
+export default function ContentEditor() {
+  const [content, setContent] = useState('<p>Initial content</p>');
+
+  const handleSave = async (html) => {
+    console.log('Saved HTML:', html);
+    // Save to API
+    await apiService().post('/Content/Save', { html });
+  };
+
+  return (
+    <RichTextEditor
+      html={content}
+      onSave={handleSave}
+      height={400}
+    />
+  );
+}
+```
+
+## Blog Post Editor
+
+```jsx
+import { RichTextEditor } from 'authscape/components';
+import { TextField, Button, Box, Paper } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+
+export default function BlogPostEditor({ postId }) {
+  const [post, setPost] = useState({
+    title: '',
+    content: '',
+    slug: ''
+  });
+
+  useEffect(() => {
+    if (postId) {
+      loadPost();
+    }
+  }, [postId]);
+
+  const loadPost = async () => {
+    const data = await apiService().get(`/Blog/GetPost?id=${postId}`);
+    setPost(data);
+  };
+
+  const savePost = async (html) => {
+    const response = await apiService().post('/Blog/SavePost', {
+      id: postId,
+      title: post.title,
+      slug: post.slug,
+      content: html
+    });
+
+    if (response.success) {
+      notification('Post saved successfully');
+    }
+  };
+
+  return (
+    <Paper sx={{ p: 3 }}>
+      <TextField
+        label="Post Title"
+        value={post.title}
+        onChange={(e) => setPost({ ...post, title: e.target.value })}
+        fullWidth
+        sx={{ mb: 2 }}
+      />
+
+      <TextField
+        label="Slug"
+        value={post.slug}
+        onChange={(e) => setPost({ ...post, slug: e.target.value })}
+        fullWidth
+        sx={{ mb: 2 }}
+      />
+
+      <RichTextEditor
+        html={post.content}
+        onSave={savePost}
+        height={500}
+      />
+    </Paper>
+  );
+}
+```
+
+## Email Template Editor
+
+```jsx
+import { RichTextEditor } from 'authscape/components';
+import { useState } from 'react';
+import { apiService } from 'authscape';
+
+export default function EmailTemplateEditor({ templateId }) {
+  const [template, setTemplate] = useState({
+    name: '',
+    subject: '',
+    body: ''
+  });
+
+  const saveTemplate = async (html) => {
+    await apiService().post('/EmailTemplates/Save', {
+      id: templateId,
+      name: template.name,
+      subject: template.subject,
+      body: html
+    });
+  };
+
+  return (
+    <div>
+      <h2>Email Template: {template.name}</h2>
+
+      <RichTextEditor
+        html={template.body}
+        onSave={saveTemplate}
+        height={400}
+      />
+
+      <p style={{ color: '#666', fontSize: 12, marginTop: 8 }}>
+        Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{companyName}}'}
+      </p>
+    </div>
+  );
+}
+```
+
+## Read-Only Mode
+
+```jsx
+import { RichTextEditor } from 'authscape/components';
+
+export default function ContentViewer({ content }) {
+  return (
+    <RichTextEditor
+      html={content}
+      onSave={() => {}}
+      height={300}
+      isDisabled={true}
+    />
+  );
+}
+```
+
+## With Auto-Save
+
+```jsx
+import { RichTextEditor } from 'authscape/components';
+import { useState, useRef, useCallback } from 'react';
+import { apiService } from 'authscape';
+
+export default function AutoSaveEditor({ documentId }) {
+  const [content, setContent] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const debounceRef = useRef(null);
+
+  const handleSave = useCallback(async (html) => {
+    // Clear any pending save
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // Debounce saves
+    debounceRef.current = setTimeout(async () => {
+      setSaving(true);
+      try {
+        await apiService().post('/Documents/Save', {
+          id: documentId,
+          content: html
+        });
+        setLastSaved(new Date());
+      } finally {
+        setSaving(false);
+      }
+    }, 1000);
+  }, [documentId]);
+
+  return (
+    <div>
+      <RichTextEditor
+        html={content}
+        onSave={handleSave}
+        height={400}
+      />
+
+      <div style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
+        {saving ? 'Saving...' : lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : ''}
+      </div>
+    </div>
+  );
+}
+```
+
+## Implementation Details
+
+The RichTextEditor uses Lexical with these plugins:
+
+```jsx
+import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
+import { ContentEditable } from '@lexical/react/LexicalContentEditable';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
+
+export const RichTextEditor = ({ html, onSave, height = 400, isDisabled = false }) => {
+  const [editorHtml, setEditorHtml] = useState(html || '');
+
+  const initialConfig = {
+    namespace: 'RichTextEditor',
+    theme,
+    onError,
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, CodeNode],
+    editable: !isDisabled,
+  };
+
+  return (
+    <LexicalComposer initialConfig={initialConfig}>
+      <div className="lexical-editor-container">
+        <Toolbar isDisabled={isDisabled} />
+        <RichTextPlugin
+          contentEditable={<ContentEditable style={{ minHeight: height }} />}
+          placeholder={<div>Enter text...</div>}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <HistoryPlugin />
+        <ListPlugin />
+        <LinkPlugin />
+        <HtmlImportPlugin initialHtml={html} />
+        <HtmlExportPlugin onChange={setEditorHtml} />
+      </div>
+      <Box sx={{ textAlign: "right" }}>
+        <Button variant="contained" onClick={() => onSave(editorHtml)}>
+          Save
+        </Button>
+      </Box>
+    </LexicalComposer>
+  );
+};
+```
+
+## Toolbar Features
+
+The toolbar provides:
+
+| Feature | Shortcut | Description |
+|---------|----------|-------------|
+| Block Type | - | Select heading level (H1-H6), paragraph, or blockquote |
+| Bold | Ctrl+B | Bold text |
+| Italic | Ctrl+I | Italic text |
+| Underline | Ctrl+U | Underlined text |
+| Strikethrough | - | Strikethrough text |
+| Code | - | Inline code formatting |
+| Bullet List | - | Unordered list |
+| Numbered List | - | Ordered list |
+| Insert Link | - | Add hyperlink |
+| Remove Link | - | Remove hyperlink |
+| Undo | Ctrl+Z | Undo last action |
+| Redo | Ctrl+Y | Redo last action |
+
+## Styling
+
+The editor includes default styles. Override with CSS:
+
+```css
+/* Editor container */
+.lexical-editor-container {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Editor content area */
+.lexical-editor-input {
+  padding: 12px;
+  outline: none;
+}
+
+/* Headings */
+.lexical-h1 { font-size: 2em; font-weight: bold; }
+.lexical-h2 { font-size: 1.5em; font-weight: bold; }
+.lexical-h3 { font-size: 1.17em; font-weight: bold; }
+
+/* Lists */
+.lexical-ul, .lexical-ol { padding-left: 24px; }
+
+/* Text formatting */
+.lexical-bold { font-weight: bold; }
+.lexical-italic { font-style: italic; }
+.lexical-underline { text-decoration: underline; }
+.lexical-link { color: #0066cc; }
+
+/* Code */
+.lexical-code {
+  background: #f0f0f0;
+  padding: 2px 4px;
+  font-family: monospace;
+}
+
+/* Blockquote */
+.lexical-quote {
+  border-left: 4px solid #ccc;
+  padding: 8px 16px;
+  background: #f9f9f9;
+  font-style: italic;
+}
+```
+
+## HTML Output
+
+The editor outputs clean HTML:
+
+```html
+<h1>Welcome to Our Blog</h1>
+<p>This is a <strong>bold</strong> and <em>italic</em> text example.</p>
+<ul>
+  <li>First item</li>
+  <li>Second item</li>
+</ul>
+<blockquote>A famous quote goes here.</blockquote>
+<p>Visit our <a href="https://example.com">website</a> for more.</p>
+```
+
+## LexicalEditor Alias
+
+For backwards compatibility, `LexicalEditor` is exported as an alias:
+
+```jsx
+import { LexicalEditor } from 'authscape/components';
+
+// Same as RichTextEditor
+<LexicalEditor html={content} onSave={handleSave} />
+```
+
+## Best Practices
+
+1. **Sanitize HTML** - Always sanitize HTML on the server before storing
+2. **Handle large content** - Set appropriate height for long documents
+3. **Auto-save** - Implement debounced auto-save for better UX
+4. **Loading states** - Show loading indicator while fetching content
+5. **Validation** - Validate content length and format before saving
+
+## Next Steps
+
+- [FileUploader](/docs/components/file-uploader) - Upload images for content
+- [DocumentManager](/docs/components/document-manager) - Manage documents
+- [Blogging Module](/docs/modules/blogging) - Full blogging system

@@ -1,0 +1,278 @@
+---
+title: Account Management
+description: User profile management, account settings, and self-service features.
+---
+
+# Account Management
+
+The Account Management module provides user profile management, account settings, password changes, and self-service features.
+
+## Features
+
+- User profile viewing and editing
+- Password change and reset
+- Email verification
+- Two-factor authentication management
+- Account deletion requests
+- Profile picture upload
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/Account/Profile` | GET | Get current user profile |
+| `/api/Account/Profile` | PUT | Update user profile |
+| `/api/Account/ChangePassword` | POST | Change password |
+| `/api/Account/ProfilePicture` | POST | Upload profile picture |
+| `/api/Account/DeleteAccount` | POST | Request account deletion |
+
+## Usage
+
+### Get User Profile
+
+```javascript
+import { apiService } from 'authscape';
+
+const profile = await apiService().get('/api/Account/Profile');
+console.log(profile);
+// {
+//   id: 123,
+//   email: 'user@example.com',
+//   firstName: 'John',
+//   lastName: 'Doe',
+//   phone: '+1234567890',
+//   profilePicture: 'https://...',
+//   createdAt: '2024-01-01T00:00:00Z'
+// }
+```
+
+### Update Profile
+
+```javascript
+await apiService().put('/api/Account/Profile', {
+  firstName: 'Jane',
+  lastName: 'Doe',
+  phone: '+1987654321'
+});
+```
+
+### Change Password
+
+```javascript
+await apiService().post('/api/Account/ChangePassword', {
+  currentPassword: 'oldpassword',
+  newPassword: 'newpassword123',
+  confirmPassword: 'newpassword123'
+});
+```
+
+### Upload Profile Picture
+
+```javascript
+const formData = new FormData();
+formData.append('file', selectedFile);
+
+await apiService().post('/api/Account/ProfilePicture', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+});
+```
+
+## Backend Implementation
+
+### AccountController
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class AccountController : ControllerBase
+{
+    private readonly IUserManagementService _userService;
+    private readonly IAccountService _accountService;
+
+    public AccountController(
+        IUserManagementService userService,
+        IAccountService accountService)
+    {
+        _userService = userService;
+        _accountService = accountService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Profile()
+    {
+        var user = await _userService.GetSignedInUser();
+        return Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName,
+            user.Phone,
+            user.ProfilePicture
+        });
+    }
+
+    [HttpPut]
+    public async Task<IActionResult> Profile([FromBody] UpdateProfileRequest request)
+    {
+        var user = await _userService.GetSignedInUser();
+        await _accountService.UpdateProfile(user.Id, request);
+        return Ok();
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var user = await _userService.GetSignedInUser();
+        var result = await _accountService.ChangePassword(user.Id, request);
+
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        return Ok();
+    }
+}
+```
+
+### IAccountService
+
+```csharp
+public interface IAccountService
+{
+    Task UpdateProfile(long userId, UpdateProfileRequest request);
+    Task<IdentityResult> ChangePassword(long userId, ChangePasswordRequest request);
+    Task<string> UploadProfilePicture(long userId, IFormFile file);
+    Task RequestAccountDeletion(long userId);
+}
+```
+
+## Models
+
+### UpdateProfileRequest
+
+```csharp
+public class UpdateProfileRequest
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string Phone { get; set; }
+    public string TimeZone { get; set; }
+    public string Language { get; set; }
+}
+```
+
+### ChangePasswordRequest
+
+```csharp
+public class ChangePasswordRequest
+{
+    [Required]
+    public string CurrentPassword { get; set; }
+
+    [Required]
+    [MinLength(8)]
+    public string NewPassword { get; set; }
+
+    [Required]
+    [Compare(nameof(NewPassword))]
+    public string ConfirmPassword { get; set; }
+}
+```
+
+## React Component Example
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import { TextField, Button, Avatar, Box } from '@mui/material';
+
+export default function ProfilePage() {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  async function loadProfile() {
+    const data = await apiService().get('/api/Account/Profile');
+    setProfile(data);
+    setLoading(false);
+  }
+
+  async function handleSave() {
+    await apiService().put('/api/Account/Profile', {
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      phone: profile.phone
+    });
+    alert('Profile updated!');
+  }
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <Box sx={{ maxWidth: 400, mx: 'auto', p: 3 }}>
+      <Avatar
+        src={profile.profilePicture}
+        sx={{ width: 100, height: 100, mx: 'auto', mb: 3 }}
+      />
+
+      <TextField
+        fullWidth
+        label="First Name"
+        value={profile.firstName}
+        onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
+        sx={{ mb: 2 }}
+      />
+
+      <TextField
+        fullWidth
+        label="Last Name"
+        value={profile.lastName}
+        onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
+        sx={{ mb: 2 }}
+      />
+
+      <TextField
+        fullWidth
+        label="Phone"
+        value={profile.phone || ''}
+        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+        sx={{ mb: 2 }}
+      />
+
+      <Button variant="contained" onClick={handleSave} fullWidth>
+        Save Changes
+      </Button>
+    </Box>
+  );
+}
+```
+
+## Password Requirements
+
+Default password requirements:
+
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character
+
+Configure in `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "PasswordRequirements": {
+      "MinLength": 8,
+      "RequireUppercase": true,
+      "RequireLowercase": true,
+      "RequireDigit": true,
+      "RequireSpecialCharacter": true
+    }
+  }
+}
+```

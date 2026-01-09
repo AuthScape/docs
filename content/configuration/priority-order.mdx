@@ -1,0 +1,111 @@
+---
+title: Priority Order
+description: Understanding configuration priority in AuthScape.
+---
+
+# Configuration Priority Order
+
+AuthScape loads configuration from multiple sources. Understanding the priority helps prevent unexpected behavior.
+
+## Default Priority (Lowest to Highest)
+
+1. **appsettings.json** - Base configuration
+2. **appsettings.\{Environment\}.json** - Environment-specific
+3. **User Secrets** - Development only
+4. **Environment Variables** - System/container level
+5. **Command-line Arguments** - Highest priority
+6. **Azure Key Vault / AWS Secrets** - When configured
+
+Higher priority sources override lower priority sources.
+
+## Example
+
+Given these configurations:
+
+**appsettings.json:**
+```json
+{
+  "AppSettings": {
+    "LogLevel": "Information",
+    "MaxRetries": 3
+  }
+}
+```
+
+**appsettings.Production.json:**
+```json
+{
+  "AppSettings": {
+    "LogLevel": "Warning"
+  }
+}
+```
+
+**Environment Variable:**
+```
+AppSettings__MaxRetries=5
+```
+
+**Result in Production:**
+```json
+{
+  "AppSettings": {
+    "LogLevel": "Warning",    // From Production.json
+    "MaxRetries": 5           // From Environment Variable
+  }
+}
+```
+
+## How Loading Works
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Default loading order:
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddJsonFile($"appsettings.{env}.json", optional: true)
+    .AddUserSecrets<Program>(optional: true)  // Development only
+    .AddEnvironmentVariables()
+    .AddCommandLine(args);
+```
+
+## Custom Priority
+
+Override the default order:
+
+```csharp
+builder.Configuration.Sources.Clear();
+
+builder.Configuration
+    .AddJsonFile("appsettings.json")
+    .AddAzureKeyVault(...)  // Load early, can be overridden
+    .AddEnvironmentVariables()
+    .AddJsonFile($"appsettings.{env}.json");  // Load last, highest priority
+```
+
+## Best Practices
+
+1. **Base settings in appsettings.json** - Non-sensitive defaults
+2. **Environment overrides** - Logging levels, feature flags
+3. **Secrets in secure stores** - API keys, connection strings
+4. **Environment variables for containers** - Dynamic configuration
+
+## Debugging Configuration
+
+```csharp
+// Log all configuration sources
+foreach (var source in builder.Configuration.Sources)
+{
+    Console.WriteLine(source.GetType().Name);
+}
+
+// Log specific value and source
+var value = builder.Configuration["AppSettings:LogLevel"];
+Console.WriteLine($"LogLevel = {value}");
+```
+
+## Next Steps
+
+- [Azure Key Vault](/docs/configuration/azure-keyvault)
+- [Environment Variables](/docs/configuration/environment-vars)

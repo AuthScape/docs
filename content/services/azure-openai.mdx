@@ -1,0 +1,258 @@
+---
+title: Azure OpenAI
+description: Integrate Azure OpenAI Service for enterprise AI capabilities in AuthScape.
+---
+
+# Azure OpenAI
+
+AuthScape includes Azure OpenAI integration for enterprise-grade AI capabilities with the security and compliance of Azure.
+
+## Configuration
+
+Add Azure OpenAI configuration to `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "AzureOpenAI": {
+      "Endpoint": "https://your-resource.openai.azure.com",
+      "ApiKey": "your-api-key",
+      "DeploymentName": "gpt-4"
+    }
+  }
+}
+```
+
+## Service Interface
+
+```csharp
+public interface IAzureOpenAIService
+{
+    Task<string> GenerateTextAsync(string prompt);
+    Task<string> GenerateChatResponseAsync(List<ChatMessage> messages);
+    Task<string> SummarizeTextAsync(string text);
+    Task<string> TranslateTextAsync(string text, string targetLanguage);
+}
+```
+
+## Implementation
+
+```csharp
+public class AzureOpenAIService : IAzureOpenAIService
+{
+    private readonly AzureOpenAIClient _client;
+    private readonly ChatClient _chatClient;
+    private readonly string _deploymentName;
+
+    public AzureOpenAIService(IOptions<AppSettings> appSettings)
+    {
+        var settings = appSettings.Value.AzureOpenAI;
+
+        _client = new AzureOpenAIClient(
+            new Uri(settings.Endpoint),
+            new AzureKeyCredential(settings.ApiKey)
+        );
+
+        _deploymentName = settings.DeploymentName;
+        _chatClient = _client.GetChatClient(_deploymentName);
+    }
+
+    public async Task<string> GenerateTextAsync(string prompt)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage("You are a helpful assistant."),
+            new UserChatMessage(prompt)
+        };
+
+        var response = await _chatClient.CompleteChatAsync(messages);
+
+        return response.Value.Content[0].Text;
+    }
+
+    public async Task<string> GenerateChatResponseAsync(List<ChatMessage> messages)
+    {
+        var response = await _chatClient.CompleteChatAsync(messages);
+        return response.Value.Content[0].Text;
+    }
+
+    public async Task<string> SummarizeTextAsync(string text)
+    {
+        var prompt = $"Summarize the following text in 2-3 sentences:\n\n{text}";
+        return await GenerateTextAsync(prompt);
+    }
+
+    public async Task<string> TranslateTextAsync(string text, string targetLanguage)
+    {
+        var prompt = $"Translate the following text to {targetLanguage}:\n\n{text}";
+        return await GenerateTextAsync(prompt);
+    }
+}
+```
+
+## Service Registration
+
+```csharp
+// In Startup.cs
+services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
+```
+
+## Controller Usage
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class AIController : ControllerBase
+{
+    private readonly IAzureOpenAIService _aiService;
+
+    [HttpPost]
+    public async Task<IActionResult> GenerateText([FromBody] GenerateRequest request)
+    {
+        var result = await _aiService.GenerateTextAsync(request.Prompt);
+        return Ok(new { response = result });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Summarize([FromBody] SummarizeRequest request)
+    {
+        var summary = await _aiService.SummarizeTextAsync(request.Text);
+        return Ok(new { summary });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Translate([FromBody] TranslateRequest request)
+    {
+        var translation = await _aiService.TranslateTextAsync(
+            request.Text,
+            request.TargetLanguage
+        );
+        return Ok(new { translation });
+    }
+}
+```
+
+## Frontend Usage
+
+```javascript
+import { apiService } from 'authscape';
+
+// Generate text
+async function generateText(prompt) {
+  const { response } = await apiService().post('/AI/GenerateText', { prompt });
+  return response;
+}
+
+// Summarize text
+async function summarize(text) {
+  const { summary } = await apiService().post('/AI/Summarize', { text });
+  return summary;
+}
+
+// Translate text
+async function translate(text, targetLanguage) {
+  const { translation } = await apiService().post('/AI/Translate', {
+    text,
+    targetLanguage
+  });
+  return translation;
+}
+```
+
+## Use Cases
+
+### Content Generation
+
+```csharp
+public async Task<string> GenerateBlogPost(string topic)
+{
+    var prompt = $@"Write a professional blog post about: {topic}
+
+Include:
+- An engaging introduction
+- 3-4 main sections with headers
+- A conclusion with call to action
+- SEO-friendly formatting";
+
+    return await _aiService.GenerateTextAsync(prompt);
+}
+```
+
+### FAQ Generation
+
+```csharp
+public async Task<List<FaqItem>> GenerateFAQs(string productDescription)
+{
+    var prompt = $@"Based on this product description, generate 5 frequently asked questions with answers:
+
+{productDescription}
+
+Format as JSON array with 'question' and 'answer' fields.";
+
+    var response = await _aiService.GenerateTextAsync(prompt);
+    return JsonSerializer.Deserialize<List<FaqItem>>(response);
+}
+```
+
+### Email Writing
+
+```csharp
+public async Task<string> GenerateEmail(string purpose, string tone)
+{
+    var prompt = $@"Write a professional email for the following purpose:
+Purpose: {purpose}
+Tone: {tone}
+
+Include subject line and body.";
+
+    return await _aiService.GenerateTextAsync(prompt);
+}
+```
+
+## Azure OpenAI vs OpenAI
+
+| Feature | Azure OpenAI | OpenAI |
+|---------|--------------|--------|
+| Data Privacy | Azure data residency | OpenAI servers |
+| Compliance | SOC 2, HIPAA, etc. | Limited |
+| SLA | Enterprise SLA | Standard |
+| Pricing | Azure billing | OpenAI billing |
+| Models | Same GPT models | Same GPT models |
+
+## Best Practices
+
+1. **Use system messages** - Define AI behavior clearly
+2. **Handle rate limits** - Implement retry logic
+3. **Monitor usage** - Track token consumption
+4. **Validate outputs** - Don't trust AI responses blindly
+5. **Secure API keys** - Use Azure Key Vault in production
+
+## Error Handling
+
+```csharp
+public async Task<string> SafeGenerateAsync(string prompt)
+{
+    try
+    {
+        return await _aiService.GenerateTextAsync(prompt);
+    }
+    catch (RequestFailedException ex) when (ex.Status == 429)
+    {
+        // Rate limited - wait and retry
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        return await _aiService.GenerateTextAsync(prompt);
+    }
+    catch (RequestFailedException ex)
+    {
+        _logger.LogError(ex, "Azure OpenAI request failed");
+        throw;
+    }
+}
+```
+
+## Next Steps
+
+- [OpenAI / ChatGPT](/docs/services/openai) - Standard OpenAI integration
+- [Generate Service Module](/docs/modules/generate-service) - AI content generation
+- [Third-Party Services](/docs/services/overview) - All integrations

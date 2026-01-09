@@ -1,0 +1,251 @@
+---
+title: Generate Certificates
+description: Create and configure SSL/TLS certificates for AuthScape production deployments.
+---
+
+# Generate Certificates
+
+SSL/TLS certificates are required for secure HTTPS connections in production. This guide covers generating and configuring certificates for AuthScape.
+
+## Certificate Types
+
+| Type | Use Case | Cost |
+|------|----------|------|
+| **Let's Encrypt** | Most deployments | Free |
+| **Azure Managed** | Azure App Service | Free with App Service |
+| **Commercial CA** | Enterprise requirements | Paid |
+| **Self-Signed** | Development only | Free |
+
+## Let's Encrypt Certificates
+
+### Using Certbot
+
+Install Certbot and generate a certificate:
+
+```bash
+# Install Certbot
+sudo apt-get update
+sudo apt-get install certbot
+
+# Generate certificate
+sudo certbot certonly --standalone -d api.yourapp.com
+
+# Certificates are saved to:
+# /etc/letsencrypt/live/api.yourapp.com/fullchain.pem
+# /etc/letsencrypt/live/api.yourapp.com/privkey.pem
+```
+
+### Convert to PFX
+
+ASP.NET Core uses PFX format:
+
+```bash
+openssl pkcs12 -export \
+  -out certificate.pfx \
+  -inkey /etc/letsencrypt/live/api.yourapp.com/privkey.pem \
+  -in /etc/letsencrypt/live/api.yourapp.com/fullchain.pem \
+  -password pass:YourPassword
+```
+
+### Auto-Renewal
+
+Set up automatic renewal:
+
+```bash
+# Test renewal
+sudo certbot renew --dry-run
+
+# Add to crontab for automatic renewal
+0 0 1 * * certbot renew --quiet
+```
+
+## Azure App Service Certificates
+
+### Free Managed Certificate
+
+Azure provides free SSL for custom domains:
+
+1. Go to **App Service** > **TLS/SSL settings**
+2. Click **Private Key Certificates** > **Create App Service Managed Certificate**
+3. Select your custom domain
+4. Azure automatically manages renewal
+
+### Binding Certificate
+
+```bash
+# Using Azure CLI
+az webapp config ssl bind \
+  --name your-app-name \
+  --resource-group your-resource-group \
+  --certificate-thumbprint <THUMBPRINT> \
+  --ssl-type SNI
+```
+
+## Development Certificates
+
+### .NET Development Certificate
+
+```bash
+# Trust the development certificate
+dotnet dev-certs https --trust
+
+# Export for use elsewhere
+dotnet dev-certs https --export-path ./dev-cert.pfx --password YourPassword
+```
+
+### Self-Signed Certificate
+
+For development and testing only:
+
+```bash
+# Generate self-signed certificate
+openssl req -x509 -newkey rsa:4096 \
+  -keyout key.pem \
+  -out cert.pem \
+  -days 365 \
+  -nodes \
+  -subj "/CN=localhost"
+
+# Convert to PFX
+openssl pkcs12 -export \
+  -out dev-certificate.pfx \
+  -inkey key.pem \
+  -in cert.pem \
+  -password pass:development
+```
+
+## Configuring ASP.NET Core
+
+### Kestrel Configuration
+
+In `appsettings.Production.json`:
+
+```json
+{
+  "Kestrel": {
+    "Endpoints": {
+      "Https": {
+        "Url": "https://*:443",
+        "Certificate": {
+          "Path": "/app/certificates/certificate.pfx",
+          "Password": "YourCertificatePassword"
+        }
+      }
+    }
+  }
+}
+```
+
+### Using Azure Key Vault
+
+Store certificates securely in Key Vault:
+
+```csharp
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ConfigureHttpsDefaults(httpsOptions =>
+    {
+        var certificate = LoadCertificateFromKeyVault();
+        httpsOptions.ServerCertificate = certificate;
+    });
+});
+```
+
+### Certificate from Environment Variable
+
+```csharp
+var certBytes = Convert.FromBase64String(
+    Environment.GetEnvironmentVariable("SSL_CERT_BASE64"));
+var certificate = new X509Certificate2(certBytes,
+    Environment.GetEnvironmentVariable("SSL_CERT_PASSWORD"));
+```
+
+## Docker Configuration
+
+### Dockerfile
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# Copy certificate
+COPY certificates/certificate.pfx /app/certificates/
+
+# Set environment variables
+ENV ASPNETCORE_URLS="https://+:443;http://+:80"
+ENV ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certificates/certificate.pfx
+ENV ASPNETCORE_Kestrel__Certificates__Default__Password=YourPassword
+
+ENTRYPOINT ["dotnet", "YourApp.dll"]
+```
+
+### Docker Compose
+
+```yaml
+services:
+  api:
+    build: .
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./certificates:/app/certificates:ro
+    environment:
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certificates/certificate.pfx
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=${CERT_PASSWORD}
+```
+
+## Certificate Verification
+
+### Check Certificate Details
+
+```bash
+# View certificate info
+openssl x509 -in cert.pem -text -noout
+
+# Check expiration
+openssl x509 -in cert.pem -enddate -noout
+
+# Verify certificate chain
+openssl verify -CAfile chain.pem cert.pem
+```
+
+### Test HTTPS Connection
+
+```bash
+# Test SSL handshake
+openssl s_client -connect api.yourapp.com:443 -servername api.yourapp.com
+
+# Check certificate with curl
+curl -vI https://api.yourapp.com
+```
+
+## Monitoring Certificate Expiry
+
+### Azure Alert
+
+Set up alerts for certificate expiration in Azure Monitor.
+
+### Script Check
+
+```bash
+#!/bin/bash
+DOMAIN="api.yourapp.com"
+EXPIRY=$(echo | openssl s_client -servername $DOMAIN -connect $DOMAIN:443 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
+EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
+NOW_EPOCH=$(date +%s)
+DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
+
+if [ $DAYS_LEFT -lt 30 ]; then
+    echo "WARNING: Certificate expires in $DAYS_LEFT days"
+fi
+```
+
+## Best Practices
+
+1. **Never commit certificates** to source control
+2. **Use Key Vault** for production certificate storage
+3. **Automate renewal** with Let's Encrypt or Azure managed certs
+4. **Monitor expiry** and set up alerts
+5. **Test certificates** before deploying to production

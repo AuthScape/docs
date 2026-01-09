@@ -1,0 +1,390 @@
+---
+title: Email - SMTP
+description: Configure generic SMTP email sending with MailKit in AuthScape.
+---
+
+# Email - SMTP (MailKit)
+
+AuthScape includes a MailKit-based SMTP provider for sending emails through any SMTP server.
+
+## Configuration
+
+Add SMTP configuration to `appsettings.json`:
+
+```json
+{
+  "Email": {
+    "DefaultFromEmail": "noreply@yourapp.com",
+    "DefaultFromName": "Your App",
+    "DefaultProvider": "MailKit",
+    "Providers": {
+      "MailKit": {
+        "Enabled": true,
+        "Settings": {
+          "Host": "smtp.yourprovider.com",
+          "Port": "587",
+          "Username": "your-smtp-username",
+          "Password": "your-smtp-password",
+          "UseSsl": "true"
+        }
+      }
+    }
+  }
+}
+```
+
+## Required Settings
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| `Host` | SMTP server hostname | `smtp.gmail.com` |
+| `Port` | SMTP port | `587` (TLS) or `465` (SSL) |
+| `Username` | SMTP username | `user@gmail.com` |
+| `Password` | SMTP password or app password | `your-app-password` |
+| `UseSsl` | Enable TLS/SSL | `true` |
+
+## Common SMTP Configurations
+
+### Gmail
+
+```json
+{
+  "MailKit": {
+    "Enabled": true,
+    "Settings": {
+      "Host": "smtp.gmail.com",
+      "Port": "587",
+      "Username": "your-email@gmail.com",
+      "Password": "your-app-password",
+      "UseSsl": "true"
+    }
+  }
+}
+```
+
+### Microsoft 365
+
+```json
+{
+  "MailKit": {
+    "Enabled": true,
+    "Settings": {
+      "Host": "smtp.office365.com",
+      "Port": "587",
+      "Username": "your-email@yourdomain.com",
+      "Password": "your-password",
+      "UseSsl": "true"
+    }
+  }
+}
+```
+
+### Amazon SES
+
+```json
+{
+  "MailKit": {
+    "Enabled": true,
+    "Settings": {
+      "Host": "email-smtp.us-east-1.amazonaws.com",
+      "Port": "587",
+      "Username": "your-ses-smtp-username",
+      "Password": "your-ses-smtp-password",
+      "UseSsl": "true"
+    }
+  }
+}
+```
+
+## Implementation
+
+The `MailKitEmailProvider` uses the MailKit library:
+
+```csharp
+public class MailKitEmailProvider : IEmailProvider
+{
+    private readonly SmtpConfig _config;
+    private readonly ILogger<MailKitEmailProvider> _logger;
+
+    public string ProviderName => "MailKit";
+
+    public MailKitEmailProvider(
+        IOptions<EmailConfiguration> emailConfig,
+        ILogger<MailKitEmailProvider> logger)
+    {
+        var config = emailConfig.Value;
+        if (config.Providers.TryGetValue("MailKit", out var providerConfig)
+            && providerConfig is SmtpConfig smtpConfig)
+        {
+            _config = smtpConfig;
+        }
+        else if (config.Providers.TryGetValue("MailKit", out var baseConfig))
+        {
+            _config = new SmtpConfig
+            {
+                Enabled = baseConfig.Enabled,
+                Host = baseConfig.Settings.GetValueOrDefault("Host", ""),
+                Port = int.Parse(baseConfig.Settings.GetValueOrDefault("Port", "587")),
+                Username = baseConfig.Settings.GetValueOrDefault("Username", ""),
+                Password = baseConfig.Settings.GetValueOrDefault("Password", ""),
+                UseSsl = bool.Parse(baseConfig.Settings.GetValueOrDefault("UseSsl", "true"))
+            };
+        }
+    }
+
+    public bool IsConfigured()
+    {
+        return _config?.Enabled == true &&
+               !string.IsNullOrEmpty(_config?.Host) &&
+               !string.IsNullOrEmpty(_config?.Username) &&
+               !string.IsNullOrEmpty(_config?.Password);
+    }
+
+    public async Task<IEmailResponse> SendEmailAsync(
+        IEmailMessage message,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured())
+        {
+            return EmailResponse.Failure(ProviderName,
+                "MailKit (SMTP) is not configured. Please provide host, username, and password.");
+        }
+
+        var mimeMessage = new MimeMessage();
+
+        // From
+        mimeMessage.From.Add(new MailboxAddress(message.FromName, message.FromEmail));
+
+        // To
+        foreach (var to in message.To)
+        {
+            mimeMessage.To.Add(new MailboxAddress(to.Name, to.Email));
+        }
+
+        // Cc
+        foreach (var cc in message.Cc ?? Enumerable.Empty<EmailRecipient>())
+        {
+            mimeMessage.Cc.Add(new MailboxAddress(cc.Name, cc.Email));
+        }
+
+        // Bcc
+        foreach (var bcc in message.Bcc ?? Enumerable.Empty<EmailRecipient>())
+        {
+            mimeMessage.Bcc.Add(new MailboxAddress(bcc.Name, bcc.Email));
+        }
+
+        // Reply-To
+        if (!string.IsNullOrEmpty(message.ReplyToEmail))
+        {
+            mimeMessage.ReplyTo.Add(new MailboxAddress(message.ReplyToName, message.ReplyToEmail));
+        }
+
+        // Subject
+        mimeMessage.Subject = message.Subject;
+
+        // Body
+        var builder = new BodyBuilder();
+        if (!string.IsNullOrEmpty(message.TextContent))
+        {
+            builder.TextBody = message.TextContent;
+        }
+        if (!string.IsNullOrEmpty(message.HtmlContent))
+        {
+            builder.HtmlBody = message.HtmlContent;
+        }
+
+        // Attachments
+        foreach (var attachment in message.Attachments ?? Enumerable.Empty<EmailAttachment>())
+        {
+            builder.Attachments.Add(attachment.FileName, attachment.Content,
+                ContentType.Parse(attachment.ContentType));
+        }
+
+        mimeMessage.Body = builder.ToMessageBody();
+
+        // Custom headers
+        foreach (var header in message.Headers ?? new Dictionary<string, string>())
+        {
+            mimeMessage.Headers.Add(header.Key, header.Value);
+        }
+
+        // Send
+        using (var client = new SmtpClient())
+        {
+            var secureSocketOptions = _config.UseSsl
+                ? SecureSocketOptions.StartTls
+                : SecureSocketOptions.None;
+
+            await client.ConnectAsync(_config.Host, _config.Port, secureSocketOptions, cancellationToken);
+            await client.AuthenticateAsync(_config.Username, _config.Password, cancellationToken);
+
+            var result = await client.SendAsync(mimeMessage, cancellationToken);
+            await client.DisconnectAsync(true, cancellationToken);
+
+            return EmailResponse.Success(ProviderName, mimeMessage.MessageId);
+        }
+    }
+}
+```
+
+## Usage Examples
+
+### Basic Email
+
+```csharp
+public class NotificationService
+{
+    private readonly IEmailService _emailService;
+
+    public async Task SendOrderConfirmation(string email, string orderNumber)
+    {
+        var message = new EmailMessage
+        {
+            To = new[] { new EmailRecipient(email) },
+            Subject = $"Order Confirmation #{orderNumber}",
+            HtmlContent = $@"
+                <h2>Thank you for your order!</h2>
+                <p>Order Number: <strong>{orderNumber}</strong></p>
+            "
+        };
+
+        await _emailService.SendEmailAsync(message, "MailKit");
+    }
+}
+```
+
+### Email with Attachments
+
+```csharp
+public async Task SendReportEmail(string email, byte[] reportPdf, byte[] reportCsv)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(email) },
+        Subject = "Monthly Report",
+        HtmlContent = "<p>Please find the monthly report attached.</p>",
+        Attachments = new[]
+        {
+            new EmailAttachment
+            {
+                FileName = "report.pdf",
+                Content = reportPdf,
+                ContentType = "application/pdf"
+            },
+            new EmailAttachment
+            {
+                FileName = "data.csv",
+                Content = reportCsv,
+                ContentType = "text/csv"
+            }
+        }
+    };
+
+    await _emailService.SendEmailAsync(message, "MailKit");
+}
+```
+
+### HTML and Plain Text
+
+```csharp
+public async Task SendMultiPartEmail(string email)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(email) },
+        Subject = "Important Update",
+        TextContent = "This is the plain text version for email clients that don't support HTML.",
+        HtmlContent = @"
+            <html>
+            <body>
+                <h1>Important Update</h1>
+                <p>This is the <strong>HTML version</strong> of the email.</p>
+            </body>
+            </html>
+        "
+    };
+
+    await _emailService.SendEmailAsync(message);
+}
+```
+
+## SSL/TLS Options
+
+| Port | Security | Setting |
+|------|----------|---------|
+| 25 | None (not recommended) | `UseSsl: false` |
+| 465 | SSL/TLS | `UseSsl: true` with `SecureSocketOptions.SslOnConnect` |
+| 587 | STARTTLS | `UseSsl: true` with `SecureSocketOptions.StartTls` |
+
+## Error Handling
+
+```csharp
+try
+{
+    var result = await _emailService.SendEmailAsync(message, "MailKit");
+
+    if (!result.Success)
+    {
+        _logger.LogError("SMTP send failed: {Error}", result.ErrorMessage);
+    }
+}
+catch (AuthenticationException ex)
+{
+    _logger.LogError("SMTP authentication failed: {Error}", ex.Message);
+}
+catch (SmtpProtocolException ex)
+{
+    _logger.LogError("SMTP protocol error: {Error}", ex.Message);
+}
+catch (SocketException ex)
+{
+    _logger.LogError("SMTP connection error: {Error}", ex.Message);
+}
+```
+
+## Best Practices
+
+1. **Use app passwords** - For Gmail and other providers with 2FA
+2. **Use TLS (port 587)** - More compatible than SSL (port 465)
+3. **Handle connection pooling** - Don't keep SMTP connections open too long
+4. **Implement retries** - SMTP servers can be temporarily unavailable
+5. **Use dedicated SMTP services** - For production, consider SendGrid or Mailgun
+
+## Environment Variables
+
+```bash
+Email__Providers__MailKit__Settings__Host=smtp.yourprovider.com
+Email__Providers__MailKit__Settings__Port=587
+Email__Providers__MailKit__Settings__Username=your-username
+Email__Providers__MailKit__Settings__Password=your-password
+Email__Providers__MailKit__Settings__UseSsl=true
+```
+
+## Troubleshooting
+
+### Connection Timeout
+
+```csharp
+// Check firewall rules for port 587/465
+// Verify hostname resolves correctly
+```
+
+### Authentication Failed
+
+```csharp
+// For Gmail: Use app password, not regular password
+// For Microsoft 365: Check OAuth requirements
+```
+
+### Certificate Errors
+
+```csharp
+// For development only - not recommended for production
+client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+```
+
+## Next Steps
+
+- [Email - SendGrid](/docs/services/email-sendgrid) - API-based email
+- [Email - Mailgun](/docs/services/email-mailgun) - API-based email
+- [Third-Party Services](/docs/services/overview) - All integrations

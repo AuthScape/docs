@@ -1,0 +1,244 @@
+---
+title: ColorPicker
+description: Color selection input with presets and custom color support.
+---
+
+# ColorPicker
+
+The ColorPicker component provides a color selection input with preset colors and custom color support.
+
+## Features
+
+- Preset color palette
+- Custom color input
+- Hex color support
+- Color preview
+- MUI integration
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | string | "#000000" | Current color value (hex) |
+| `onChange` | function | required | Called with new color |
+| `presets` | string[] | - | Preset color palette |
+| `label` | string | "Color" | Input label |
+| `disabled` | boolean | false | Disable picker |
+
+## Usage
+
+### Basic Usage
+
+```jsx
+import { ColorPicker } from 'authscape/components';
+
+export default function ThemeSettings() {
+  const [color, setColor] = useState('#3B82F6');
+
+  return (
+    <ColorPicker
+      value={color}
+      onChange={setColor}
+      label="Primary Color"
+    />
+  );
+}
+```
+
+### With Preset Colors
+
+```jsx
+const brandColors = [
+  '#3B82F6',  // Blue
+  '#10B981',  // Green
+  '#F59E0B',  // Amber
+  '#EF4444',  // Red
+  '#8B5CF6',  // Purple
+  '#EC4899',  // Pink
+];
+
+<ColorPicker
+  value={color}
+  onChange={setColor}
+  presets={brandColors}
+  label="Brand Color"
+/>
+```
+
+### In a Form
+
+```jsx
+export default function BrandingForm() {
+  const [branding, setBranding] = useState({
+    primaryColor: '#3B82F6',
+    secondaryColor: '#10B981'
+  });
+
+  return (
+    <form>
+      <ColorPicker
+        value={branding.primaryColor}
+        onChange={(color) => setBranding({ ...branding, primaryColor: color })}
+        label="Primary Color"
+      />
+      <ColorPicker
+        value={branding.secondaryColor}
+        onChange={(color) => setBranding({ ...branding, secondaryColor: color })}
+        label="Secondary Color"
+      />
+    </form>
+  );
+}
+```
+
+## Implementation
+
+```jsx
+import { useState } from 'react';
+import { Box, TextField, Popover, IconButton } from '@mui/material';
+
+const defaultPresets = [
+  '#000000', '#FFFFFF', '#F44336', '#E91E63',
+  '#9C27B0', '#673AB7', '#3F51B5', '#2196F3',
+  '#03A9F4', '#00BCD4', '#009688', '#4CAF50',
+  '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107',
+  '#FF9800', '#FF5722', '#795548', '#607D8B'
+];
+
+export function ColorPicker({
+  value = '#000000',
+  onChange,
+  presets = defaultPresets,
+  label = 'Color',
+  disabled = false
+}) {
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const handleClick = (event) => {
+    if (!disabled) {
+      setAnchorEl(event.currentTarget);
+    }
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handlePresetClick = (color) => {
+    onChange(color);
+    handleClose();
+  };
+
+  const handleInputChange = (e) => {
+    const newValue = e.target.value;
+    if (/^#[0-9A-Fa-f]{0,6}$/.test(newValue)) {
+      onChange(newValue);
+    }
+  };
+
+  return (
+    <Box>
+      <TextField
+        label={label}
+        value={value}
+        onChange={handleInputChange}
+        disabled={disabled}
+        InputProps={{
+          startAdornment: (
+            <IconButton
+              size="small"
+              onClick={handleClick}
+              sx={{ mr: 1 }}
+            >
+              <Box
+                sx={{
+                  width: 24,
+                  height: 24,
+                  bgcolor: value,
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'grey.400'
+                }}
+              />
+            </IconButton>
+          )
+        }}
+        sx={{ width: 200 }}
+      />
+
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1 }}>
+          {presets.map((color) => (
+            <Box
+              key={color}
+              onClick={() => handlePresetClick(color)}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: color,
+                borderRadius: 1,
+                cursor: 'pointer',
+                border: value === color ? '2px solid black' : '1px solid grey',
+                '&:hover': { transform: 'scale(1.1)' }
+              }}
+            />
+          ))}
+        </Box>
+      </Popover>
+    </Box>
+  );
+}
+```
+
+## With react-color Library
+
+For more advanced color picking:
+
+```jsx
+import { ChromePicker } from 'react-color';
+
+export function AdvancedColorPicker({ value, onChange }) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  return (
+    <Box sx={{ position: 'relative' }}>
+      <Box
+        onClick={() => setShowPicker(!showPicker)}
+        sx={{
+          width: 40,
+          height: 40,
+          bgcolor: value,
+          borderRadius: 1,
+          cursor: 'pointer',
+          border: '1px solid grey'
+        }}
+      />
+      {showPicker && (
+        <Box sx={{ position: 'absolute', zIndex: 2 }}>
+          <Box
+            sx={{ position: 'fixed', inset: 0 }}
+            onClick={() => setShowPicker(false)}
+          />
+          <ChromePicker
+            color={value}
+            onChange={(color) => onChange(color.hex)}
+          />
+        </Box>
+      )}
+    </Box>
+  );
+}
+```
+
+## Best Practices
+
+1. **Validate hex format** - Ensure valid hex colors
+2. **Show preview** - Display selected color visually
+3. **Include presets** - Common colors for quick selection
+4. **Support keyboard** - Allow typing hex values
+5. **Handle transparency** - Consider RGBA if needed

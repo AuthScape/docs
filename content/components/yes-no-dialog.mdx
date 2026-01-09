@@ -1,0 +1,222 @@
+---
+title: YesNoDialog
+description: Simple confirmation dialog with customizable Yes/No buttons.
+---
+
+# YesNoDialog
+
+The YesNoDialog component provides a simple confirmation dialog for destructive actions or user confirmations.
+
+## Features
+
+- Customizable title and message
+- Configurable button labels
+- Yes/No action callbacks
+- Material-UI Dialog styling
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `open` | boolean | required | Show/hide dialog |
+| `title` | string | - | Dialog title |
+| `message` | string | - | Dialog message |
+| `yesText` | string | "Yes" | Yes button label |
+| `noText` | string | "No" | No button label |
+| `YesAction` | function | - | Yes button callback |
+| `NoAction` | function | - | No button callback |
+
+## Basic Usage
+
+```jsx
+import { YesNoDialog } from 'authscape/components';
+import { useState } from 'react';
+
+export default function DeleteConfirmation() {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const handleDelete = () => {
+    setShowConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    await deleteItem();
+    setShowConfirm(false);
+  };
+
+  return (
+    <>
+      <Button color="error" onClick={handleDelete}>
+        Delete Item
+      </Button>
+
+      <YesNoDialog
+        open={showConfirm}
+        title="Delete Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        yesText="Delete"
+        noText="Cancel"
+        YesAction={confirmDelete}
+        NoAction={() => setShowConfirm(false)}
+      />
+    </>
+  );
+}
+```
+
+## Custom Button Labels
+
+```jsx
+<YesNoDialog
+  open={showDialog}
+  title="Unsaved Changes"
+  message="You have unsaved changes. Do you want to save before leaving?"
+  yesText="Save & Leave"
+  noText="Discard Changes"
+  YesAction={handleSaveAndLeave}
+  NoAction={handleDiscard}
+/>
+```
+
+## Archive Confirmation
+
+```jsx
+<YesNoDialog
+  open={showArchive}
+  title="Archive User"
+  message={`Are you sure you want to archive ${user.name}? They will no longer be able to log in.`}
+  yesText="Archive"
+  noText="Keep Active"
+  YesAction={handleArchive}
+  NoAction={() => setShowArchive(false)}
+/>
+```
+
+## Logout Confirmation
+
+```jsx
+<YesNoDialog
+  open={showLogout}
+  title="Sign Out"
+  message="Are you sure you want to sign out?"
+  yesText="Sign Out"
+  noText="Stay Signed In"
+  YesAction={() => authService().logout()}
+  NoAction={() => setShowLogout(false)}
+/>
+```
+
+## Implementation
+
+```jsx
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button
+} from '@mui/material';
+
+export function YesNoDialog({
+  open,
+  title,
+  message,
+  yesText = 'Yes',
+  noText = 'No',
+  YesAction,
+  NoAction
+}) {
+  return (
+    <Dialog open={open} onClose={NoAction}>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>{message}</DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={NoAction}>{noText}</Button>
+        <Button onClick={YesAction} autoFocus color="primary">
+          {yesText}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+## With Loading State
+
+```jsx
+import { useState } from 'react';
+
+export default function AsyncConfirmation() {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      await performAction();
+      setOpen(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <YesNoDialog
+      open={open}
+      title="Confirm Action"
+      message="This will perform the action."
+      yesText={loading ? "Processing..." : "Confirm"}
+      YesAction={handleConfirm}
+      NoAction={() => !loading && setOpen(false)}
+    />
+  );
+}
+```
+
+## Use with File Uploader
+
+```jsx
+<FileUploader
+  url="/api/Files/Upload"
+  onConfirmDelete={(file) => {
+    return new Promise((resolve) => {
+      setDeleteFile(file);
+      setShowDelete(true);
+      setDeleteResolve(() => resolve);
+    });
+  }}
+/>
+
+<YesNoDialog
+  open={showDelete}
+  title="Delete File"
+  message={`Delete "${deleteFile?.name}"?`}
+  yesText="Delete"
+  noText="Cancel"
+  YesAction={() => {
+    deleteResolve(true);
+    setShowDelete(false);
+  }}
+  NoAction={() => {
+    deleteResolve(false);
+    setShowDelete(false);
+  }}
+/>
+```
+
+## Best Practices
+
+1. **Be specific** - Use clear, action-specific button labels
+2. **Explain consequences** - Tell users what will happen
+3. **Make it reversible when possible** - Mention if action can be undone
+4. **Use sparingly** - Don't confirm every action
+5. **Handle async actions** - Show loading state for slow operations
+
+## Next Steps
+
+- [FileUploader](/docs/components/file-uploader) - File upload with delete confirmation
+- [DocumentManager](/docs/components/document-manager) - File management
+- [Components Overview](/docs/components/overview) - All components

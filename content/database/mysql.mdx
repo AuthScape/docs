@@ -1,0 +1,81 @@
+---
+title: MySQL Configuration
+description: MySQL support status and connection string examples.
+---
+
+# MySQL Configuration
+
+MySQL support is **coming soon** to AuthScape. We're waiting for the Pomelo.EntityFrameworkCore.MySql package to release a .NET 10 compatible version.
+
+## Current Status
+
+| Status | Details |
+|--------|---------|
+| **Provider** | Pomelo.EntityFrameworkCore.MySql |
+| **Availability** | Waiting for .NET 10 support |
+| **Expected** | When Pomelo releases v9.x for .NET 10 |
+
+## Connection String Examples
+
+Once supported, MySQL connection strings will work like this:
+
+### Standard Connection
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=localhost;Database=authscape;User=root;Password=yourpassword"
+  }
+}
+```
+
+### With Port
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=localhost;Port=3306;Database=authscape;User=root;Password=yourpassword"
+  }
+}
+```
+
+### MariaDB
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=localhost;Database=authscape;User=root;Password=yourpassword"
+  }
+}
+```
+
+### Azure Database for MySQL
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=yourserver.mysql.database.azure.com;Database=authscape;User=yourusername@yourserver;Password=yourpassword;SslMode=Required"
+  }
+}
+```
+
+## Planned Features
+
+When MySQL support is added, it will include:
+
+- Auto-detection from connection string format
+- Retry policies for transient failures
+- Connection pooling
+- SSL/TLS support
+
+## Alternative Options
+
+While waiting for MySQL support, consider:
+
+1. **PostgreSQL** - Similar open-source database with full support
+2. **SQL Server** - Enterprise-grade with Azure integration
+3. **SQLite** - For development and small applications
+
+## Stay Updated
+
+Check the [AuthScape releases](https://github.com/authscape/authscape) for updates on MySQL support.

@@ -1,0 +1,109 @@
+---
+title: SQL Server Configuration
+description: Connection string examples and configuration for Microsoft SQL Server.
+---
+
+# SQL Server Configuration
+
+SQL Server is the default and most commonly used database provider for AuthScape. It's ideal for production workloads and enterprise deployments.
+
+## Connection String Examples
+
+### Windows Authentication (Local Development)
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=localhost;Database=AuthScape;Trusted_Connection=true;TrustServerCertificate=true;"
+  }
+}
+```
+
+### SQL Server Authentication
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=localhost;Database=AuthScape;User Id=sa;Password=yourpassword;TrustServerCertificate=true;"
+  }
+}
+```
+
+### SQL Server Express
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=.\\SQLEXPRESS;Database=AuthScape;Trusted_Connection=true;TrustServerCertificate=true;"
+  }
+}
+```
+
+### Azure SQL Database
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=tcp:yourserver.database.windows.net,1433;Database=AuthScape;User Id=yourusername;Password=yourpassword;Encrypt=true;TrustServerCertificate=false;"
+  }
+}
+```
+
+## Connection String Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `Server` | Server name or IP | `localhost`, `myserver.database.windows.net` |
+| `Database` | Database name | `AuthScape` |
+| `User Id` | SQL login username | `sa`, `myuser` |
+| `Password` | SQL login password | `MyP@ssw0rd` |
+| `Trusted_Connection` | Use Windows auth | `true`, `false` |
+| `TrustServerCertificate` | Trust self-signed certs | `true`, `false` |
+| `Encrypt` | Encrypt connection | `true`, `false` |
+| `MultipleActiveResultSets` | Enable MARS | `true`, `false` |
+
+## Features
+
+### Retry Policy
+
+SQL Server connections include automatic retry for transient failures:
+
+```csharp
+sqlOptions.EnableRetryOnFailure(
+    maxRetryCount: 10,
+    maxRetryDelay: TimeSpan.FromSeconds(30),
+    errorNumbersToAdd: null);
+```
+
+### Connection Pooling
+
+Connection pooling is enabled by default. You can configure it:
+
+```
+Min Pool Size=5;Max Pool Size=100;Connection Timeout=30;
+```
+
+## Best Practices
+
+1. **Use Windows Authentication** in development when possible
+2. **Use Azure AD Authentication** for Azure SQL in production
+3. **Always encrypt** connections in production (`Encrypt=true`)
+4. **Use connection pooling** for better performance
+5. **Store credentials** in Azure Key Vault or environment variables
+
+## Azure AD Authentication
+
+For Azure SQL with Azure AD:
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=tcp:yourserver.database.windows.net,1433;Database=AuthScape;Authentication=Active Directory Default;"
+  }
+}
+```
+
+This uses `DefaultAzureCredential` which supports:
+- Managed Identity (Azure VMs, App Service)
+- Visual Studio authentication
+- Azure CLI authentication

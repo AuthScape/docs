@@ -1,0 +1,209 @@
+---
+title: AuthScape App
+description: Core application module that bootstraps AuthScape with essential services and configuration.
+---
+
+# AuthScape App
+
+The AuthScape App module is the core foundation that bootstraps your application with essential services, configuration, and infrastructure.
+
+## Features
+
+- Application bootstrap and initialization
+- Service registration and dependency injection
+- Configuration loading from multiple sources
+- Database context setup
+- Authentication and authorization setup
+- Middleware pipeline configuration
+
+## Setup
+
+### Program.cs
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Add AuthScape core services
+builder.Services.AddAuthScape(builder.Configuration);
+
+// Add database context
+builder.Services.AddAuthScapeDatabase(builder.Configuration);
+
+// Add authentication
+builder.Services.AddAuthScapeAuthentication(builder.Configuration);
+
+var app = builder.Build();
+
+// Configure middleware
+app.UseAuthScape();
+
+app.Run();
+```
+
+### Configuration
+
+The core module reads from `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "DatabaseContext": "Server=localhost;Database=authscape;...",
+    "BaseUrl": "https://api.yourapp.com",
+    "CorsOrigins": [
+      "https://yourapp.com"
+    ],
+    "DefaultCompanyId": 1,
+    "EnableSwagger": true,
+    "TokenLifetimeMinutes": 60
+  }
+}
+```
+
+## Core Services
+
+### IUserManagementService
+
+Access current user information:
+
+```csharp
+public class MyController : ControllerBase
+{
+    private readonly IUserManagementService _userService;
+
+    public MyController(IUserManagementService userService)
+    {
+        _userService = userService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetProfile()
+    {
+        var user = await _userService.GetSignedInUser();
+        return Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName,
+            user.CompanyId,
+            user.Roles
+        });
+    }
+}
+```
+
+### DatabaseContext
+
+Entity Framework Core context with all AuthScape entities:
+
+```csharp
+public class MyService
+{
+    private readonly DatabaseContext _context;
+
+    public MyService(DatabaseContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<List<User>> GetUsersAsync()
+    {
+        return await _context.Users
+            .Include(u => u.Company)
+            .Where(u => u.IsActive)
+            .ToListAsync();
+    }
+}
+```
+
+## Middleware
+
+The `UseAuthScape()` method configures the middleware pipeline:
+
+```csharp
+app.UseRouting();
+app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+});
+```
+
+## Extension Methods
+
+### AddAuthScape
+
+Registers core services:
+
+```csharp
+public static IServiceCollection AddAuthScape(
+    this IServiceCollection services,
+    IConfiguration configuration)
+{
+    services.Configure<AppSettings>(configuration.GetSection("AppSettings"));
+    services.AddScoped<IUserManagementService, UserManagementService>();
+    services.AddScoped<ICompanyService, CompanyService>();
+    // ... more services
+    return services;
+}
+```
+
+### AddAuthScapeDatabase
+
+Configures Entity Framework with auto-detection:
+
+```csharp
+public static IServiceCollection AddAuthScapeDatabase(
+    this IServiceCollection services,
+    IConfiguration configuration)
+{
+    var connectionString = configuration["AppSettings:DatabaseContext"];
+
+    // Auto-detect provider from connection string
+    if (connectionString.Contains("Server=tcp:"))
+        services.AddDbContext<DatabaseContext>(o => o.UseSqlServer(connectionString));
+    else if (connectionString.Contains("Host="))
+        services.AddDbContext<DatabaseContext>(o => o.UseNpgsql(connectionString));
+    else
+        services.AddDbContext<DatabaseContext>(o => o.UseSqlite(connectionString));
+
+    return services;
+}
+```
+
+## Health Checks
+
+Built-in health check endpoints:
+
+```csharp
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
+```
+
+## Environment Detection
+
+```csharp
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+else
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+```
+
+## Best Practices
+
+1. **Use dependency injection** - All services are registered in the DI container
+2. **Follow configuration hierarchy** - Environment-specific settings override base settings
+3. **Use async/await** - All database operations are async
+4. **Check authentication** - Use `[Authorize]` attribute on protected endpoints
+5. **Handle errors gracefully** - Use global exception handling middleware

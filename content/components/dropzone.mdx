@@ -1,0 +1,248 @@
+---
+title: DropZone
+description: Drag-and-drop file upload zone using react-dropzone.
+---
+
+# DropZone
+
+The DropZone component provides a drag-and-drop area for file uploads with visual feedback and preview support.
+
+## Features
+
+- Drag-and-drop file selection
+- Click to select files
+- Image preview
+- File type filtering
+- Single or multiple files
+- Visual drag states
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | string | - | Instruction text |
+| `image` | string | - | Preview image URL |
+| `styleOverride` | object | - | Custom styles |
+| `onDrop` | function | required | Callback when files dropped |
+| `maxFiles` | number | 1 | Maximum files allowed |
+| `multiple` | boolean | false | Allow multiple files |
+| `accept` | object | - | File type filter |
+
+## Basic Usage
+
+```jsx
+import { DropZone } from 'authscape/components';
+
+export default function FileDropzone() {
+  const handleDrop = (acceptedFiles) => {
+    console.log('Files dropped:', acceptedFiles);
+    // Upload files
+  };
+
+  return (
+    <DropZone
+      text="Drag and drop files here, or click to select"
+      onDrop={handleDrop}
+    />
+  );
+}
+```
+
+## With Image Preview
+
+```jsx
+import { DropZone } from 'authscape/components';
+import { useState } from 'react';
+
+export default function ImageUploader() {
+  const [preview, setPreview] = useState('/placeholder.png');
+
+  const handleDrop = (acceptedFiles) => {
+    const file = acceptedFiles[0];
+    const previewUrl = URL.createObjectURL(file);
+    setPreview(previewUrl);
+  };
+
+  return (
+    <DropZone
+      text="Drop your image here"
+      image={preview}
+      onDrop={handleDrop}
+      accept={{ 'image/*': ['.png', '.jpg', '.jpeg', '.gif'] }}
+    />
+  );
+}
+```
+
+## Multiple Files
+
+```jsx
+<DropZone
+  text="Drop up to 5 files"
+  onDrop={handleMultipleDrop}
+  multiple={true}
+  maxFiles={5}
+/>
+```
+
+## File Type Filtering
+
+```jsx
+// Accept only PDFs
+<DropZone
+  text="Drop PDF files"
+  onDrop={handleDrop}
+  accept={{ 'application/pdf': ['.pdf'] }}
+/>
+
+// Accept only images
+<DropZone
+  text="Drop images"
+  onDrop={handleDrop}
+  accept={{ 'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'] }}
+/>
+
+// Accept documents
+<DropZone
+  text="Drop documents"
+  onDrop={handleDrop}
+  accept={{
+    'application/pdf': ['.pdf'],
+    'application/msword': ['.doc'],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
+  }}
+/>
+```
+
+## Custom Styling
+
+```jsx
+<DropZone
+  text="Custom styled dropzone"
+  onDrop={handleDrop}
+  styleOverride={{
+    border: '2px dashed #1976d2',
+    borderRadius: '12px',
+    padding: '40px',
+    backgroundColor: '#f5f5f5',
+    cursor: 'pointer'
+  }}
+/>
+```
+
+## With Upload Progress
+
+```jsx
+import { DropZone } from 'authscape/components';
+import { apiService } from 'authscape';
+import { useState } from 'react';
+
+export default function UploadWithProgress() {
+  const [progress, setProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+
+  const handleDrop = async (acceptedFiles) => {
+    const file = acceptedFiles[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setUploading(true);
+
+    await apiService().post('/File/Upload', formData, {
+      onUploadProgress: (e) => {
+        const percent = Math.round((e.loaded * 100) / e.total);
+        setProgress(percent);
+      }
+    });
+
+    setUploading(false);
+    setProgress(0);
+  };
+
+  return (
+    <div>
+      <DropZone
+        text={uploading ? `Uploading... ${progress}%` : 'Drop files here'}
+        onDrop={handleDrop}
+      />
+      {uploading && <LinearProgress variant="determinate" value={progress} />}
+    </div>
+  );
+}
+```
+
+## Real Example from AuthScape
+
+From `privateLabelEditor.js`:
+
+```jsx
+<DropZone
+  image={"/DefaultNoImage.svg"}
+  text={"Drag 'n' drop your app icon here"}
+  onDrop={async (file) => {
+    const data = new FormData();
+    data.append("file", file);
+    data.append("domain", stateBaseUri);
+
+    let response = await apiService().post("/PrivateLabel/UploadAppIcon", data);
+    if (response != null && response.status == 200) {
+      window.location.reload();
+    }
+  }}
+/>
+```
+
+## Implementation Details
+
+The DropZone uses `react-dropzone` internally:
+
+```jsx
+import { useDropzone } from 'react-dropzone';
+
+export function DropZone({ text, image, onDrop, maxFiles = 1, multiple, accept }) {
+  const {
+    getRootProps,
+    getInputProps,
+    isDragActive,
+    isDragAccept,
+    isDragReject
+  } = useDropzone({
+    onDrop,
+    maxFiles,
+    multiple,
+    accept
+  });
+
+  const style = {
+    border: '2px dashed',
+    borderColor: isDragAccept ? '#00e676' : isDragReject ? '#ff1744' : '#ccc',
+    backgroundColor: isDragActive ? '#f0f0f0' : '#fff',
+    padding: '20px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
+  };
+
+  return (
+    <div {...getRootProps({ style })}>
+      <input {...getInputProps()} />
+      {image && <img src={image} alt="Preview" style={{ maxWidth: '100%' }} />}
+      <p>{text}</p>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Show previews** - For images, show a preview after drop
+2. **Validate file types** - Use `accept` to filter invalid files
+3. **Show progress** - Use progress indicator for large files
+4. **Handle errors** - Show error messages for rejected files
+5. **Limit file size** - Validate file size before upload
+
+## Next Steps
+
+- [FileUploader](/docs/components/file-uploader) - Full upload component
+- [DocumentManager](/docs/components/document-manager) - File management
+- [NextImage](/docs/components/nextimage) - Image display

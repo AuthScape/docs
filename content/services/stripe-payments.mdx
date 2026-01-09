@@ -1,0 +1,380 @@
+---
+title: Stripe Payments
+description: Process payments with Stripe in AuthScape including cards, ACH, and saved payment methods.
+---
+
+# Stripe Payments
+
+AuthScape includes comprehensive Stripe integration for processing payments, saving cards, and managing wallets.
+
+## Configuration
+
+Add Stripe configuration to `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "Stripe": {
+      "SecretKey": "sk_test_xxx",
+      "PublishableKey": "pk_test_xxx",
+      "SigningSecret": "whsec_xxx"
+    }
+  }
+}
+```
+
+## Service Interface
+
+The `IStripePayService` provides payment operations:
+
+```csharp
+public interface IStripePayService
+{
+    // Public key
+    Task<string?> GetStripePublicKey();
+
+    // Payment intents
+    Task<ConnectCustomerResponse> ConnectCustomer(SignedInUser signedInUser, PaymentRequest paymentRequest);
+    Task<ChargeResponse> Charge(SignedInUser signedInUser, ChargeParam param);
+    Task CancelPayment(string paymentIntent);
+
+    // Payment methods
+    Task<ICollection<WalletPaymentMethod>> GetPaymentMethods(SignedInUser signedInUser, PaymentMethodType paymentMethodType);
+    Task<Guid> AddPaymentMethod(SignedInUser signedInUser, PaymentMethodType paymentMethodType, Guid walletId, string paymentMethod);
+    Task RemovePaymentMethod(SignedInUser signedInUser, Guid id);
+    Task<bool> SetDefaultPaymentMethod(SignedInUser signedInUser, Guid walletId, Guid paymentMethodId);
+    Task<WalletPaymentMethod> GetDefaultPaymentMethod(SignedInUser signedInUser, Guid walletId);
+
+    // Charging saved payments
+    Task ChargeWithExistingPayment(SignedInUser signedInUser, long invoiceId, Guid walletPaymentMethodId, decimal amount);
+
+    // Payment links
+    Task<string> GeneratePaymentLink(PaymentLinkParam param);
+
+    // Checkout
+    Task<string> StripeCheckout(StripeCheckoutParam param);
+
+    // Invoices
+    Task<string> CreateCustomer(string customerName, string email, string phone, string address, string city, string state, string postalCode, string country = "US");
+    Task<string> CreateInvoice(string customerId, bool AutomaticTax, long DaysUntilDue = 1826);
+    Task<InvoiceItem> CreateItemForInvoice(string customerId, string invoiceId, string productName, decimal amount, int qty, TaxBehavior taxBehavior, string? taxCode = null);
+    Task PayInvoice(string invoiceId, string paymentMethod, decimal? amount = null);
+    Task FinalizeInvoice(string invoiceId);
+    Task VoidInvoice(string invoiceId);
+
+    // Coupons
+    Task CreateCouponPercentOff(decimal percentOff, string customerCode, CouponDuration couponDuration, long? MaxRedemptions = null);
+    Task CreateCouponAmountOff(decimal amountOff, string customerCode, CouponDuration couponDuration, long? MaxRedemptions = null);
+    Task DeleteCoupon(string customerCode);
+}
+```
+
+## Service Registration
+
+```csharp
+// In Startup.cs
+services.AddScoped<IStripePayService, StripePayService>();
+```
+
+## Implementation
+
+```csharp
+public class StripePayService : IStripePayService
+{
+    readonly DatabaseContext context;
+    readonly AppSettings appSettings;
+
+    public StripePayService(IOptions<AppSettings> appSettings, DatabaseContext context)
+    {
+        this.appSettings = appSettings.Value;
+        this.context = context;
+
+        if (this.appSettings.Stripe != null && this.appSettings.Stripe.SecretKey != null)
+        {
+            StripeConfiguration.ApiKey = this.appSettings.Stripe.SecretKey;
+        }
+    }
+
+    public Task<string?> GetStripePublicKey()
+    {
+        return Task.FromResult(appSettings.Stripe?.PublishableKey);
+    }
+
+    public async Task<ChargeResponse> Charge(SignedInUser signedInUser, ChargeParam param)
+    {
+        var wallet = await context.WalletPaymentMethods
+            .Include(w => w.Wallet)
+            .Where(w => w.Id == param.WalletPaymentMethodId)
+            .FirstOrDefaultAsync();
+
+        if (wallet == null)
+        {
+            throw new BadRequestException("Please provide a payment method");
+        }
+
+        var service = new PaymentIntentService();
+        var options = new PaymentIntentCreateOptions
+        {
+            Amount = param.Amount.ConvertToCents(),  // Convert dollars to cents
+            Currency = "usd",
+            Customer = wallet.Wallet.PaymentCustomerId,
+            PaymentMethod = wallet.PaymentMethodId,
+            Confirm = true,
+            OffSession = true
+        };
+
+        var paymentIntent = await service.CreateAsync(options);
+
+        return new ChargeResponse
+        {
+            Success = paymentIntent.Status == "succeeded",
+            PaymentIntentId = paymentIntent.Id
+        };
+    }
+}
+```
+
+## Payment Controller
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+public class PaymentController : ControllerBase
+{
+    private readonly IStripePayService _stripePayService;
+    private readonly IUserManagementService _userManagementService;
+
+    [HttpGet]
+    public async Task<IActionResult> GetStripePublicKey()
+    {
+        var key = await _stripePayService.GetStripePublicKey();
+        return Ok(new { publishableKey = key });
+    }
+
+    [HttpPost]
+    [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+    public async Task<IActionResult> ConnectCustomer([FromBody] PaymentRequest request)
+    {
+        var user = _userManagementService.GetSignedInUser();
+        var result = await _stripePayService.ConnectCustomer(user, request);
+        return Ok(result);
+    }
+
+    [HttpPost]
+    [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+    public async Task<IActionResult> Charge([FromBody] ChargeParam param)
+    {
+        var user = _userManagementService.GetSignedInUser();
+        var result = await _stripePayService.Charge(user, param);
+        return Ok(result);
+    }
+
+    [HttpGet]
+    [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+    public async Task<IActionResult> GetPaymentMethods()
+    {
+        var user = _userManagementService.GetSignedInUser();
+        var methods = await _stripePayService.GetPaymentMethods(user, PaymentMethodType.Company);
+        return Ok(methods);
+    }
+}
+```
+
+## Frontend Integration
+
+### Get Stripe Public Key
+
+```javascript
+import { apiService } from 'authscape';
+import { loadStripe } from '@stripe/stripe-js';
+
+const response = await apiService().get('/Payment/GetStripePublicKey');
+const stripe = await loadStripe(response.publishableKey);
+```
+
+### Stripe Payment Component
+
+AuthScape includes ready-to-use payment components:
+
+```jsx
+import { StripePayment } from 'authscape/components/stripe';
+
+export default function CheckoutPage() {
+  const handlePaymentComplete = (result) => {
+    if (result.success) {
+      alert('Payment successful!');
+    }
+  };
+
+  return (
+    <StripePayment
+      amount={4999}  // $49.99 in cents
+      onComplete={handlePaymentComplete}
+    />
+  );
+}
+```
+
+### Payment Form with Stripe Elements
+
+```jsx
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { apiService } from 'authscape';
+
+export default function PaymentForm({ amount }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setLoading(true);
+
+    // Get client secret from backend
+    const { clientSecret } = await apiService().post('/Payment/ConnectCustomer', {
+      amount,
+      currency: 'usd'
+    });
+
+    // Confirm payment
+    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: {
+        card: elements.getElement(CardElement),
+      }
+    });
+
+    if (error) {
+      alert(error.message);
+    } else if (paymentIntent.status === 'succeeded') {
+      alert('Payment successful!');
+    }
+
+    setLoading(false);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <CardElement />
+      <button type="submit" disabled={!stripe || loading}>
+        Pay ${(amount / 100).toFixed(2)}
+      </button>
+    </form>
+  );
+}
+```
+
+### Save Card for Future Payments
+
+```javascript
+// Save card
+const { clientSecret } = await apiService().post('/Payment/CreateSetupIntent');
+
+const { error, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+  payment_method: {
+    card: elements.getElement(CardElement),
+  }
+});
+
+if (setupIntent.status === 'succeeded') {
+  // Card saved successfully
+  await apiService().post('/Payment/AddPaymentMethod', {
+    paymentMethod: setupIntent.payment_method
+  });
+}
+```
+
+### Charge Saved Card
+
+```javascript
+// Get saved cards
+const paymentMethods = await apiService().get('/Payment/GetPaymentMethods');
+
+// Charge a saved card
+await apiService().post('/Payment/Charge', {
+  walletPaymentMethodId: paymentMethods[0].id,
+  amount: 4999  // $49.99 in cents
+});
+```
+
+## Payment Method Types
+
+AuthScape supports payment methods at different levels:
+
+```csharp
+public enum PaymentMethodType
+{
+    User = 0,      // Personal payment methods
+    Location = 1,  // Location-specific payment
+    Company = 2    // Company-wide payment methods
+}
+```
+
+## Webhook Handler
+
+Handle Stripe events with webhooks:
+
+```csharp
+[HttpPost]
+[Route("api/stripe/webhook")]
+public async Task<IActionResult> StripeWebhook()
+{
+    var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+    var signature = Request.Headers["Stripe-Signature"];
+
+    try
+    {
+        var stripeEvent = EventUtility.ConstructEvent(
+            json,
+            signature,
+            _appSettings.Stripe.SigningSecret
+        );
+
+        switch (stripeEvent.Type)
+        {
+            case "payment_intent.succeeded":
+                var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                await HandlePaymentSuccess(paymentIntent);
+                break;
+
+            case "payment_intent.payment_failed":
+                var failedIntent = stripeEvent.Data.Object as PaymentIntent;
+                await HandlePaymentFailed(failedIntent);
+                break;
+
+            case "invoice.paid":
+                var invoice = stripeEvent.Data.Object as Invoice;
+                await HandleInvoicePaid(invoice);
+                break;
+        }
+
+        return Ok();
+    }
+    catch (StripeException)
+    {
+        return BadRequest();
+    }
+}
+```
+
+## Best Practices
+
+1. **Use webhooks** - Don't rely solely on client-side confirmation
+2. **Store payment methods** - Let users save cards for convenience
+3. **Handle errors** - Show clear error messages to users
+4. **Use test mode** - Test with Stripe test cards (4242 4242 4242 4242)
+5. **Enable 3D Secure** - For additional fraud protection
+6. **Log transactions** - Keep records for auditing
+
+## Test Cards
+
+| Card Number | Description |
+|-------------|-------------|
+| 4242 4242 4242 4242 | Successful payment |
+| 4000 0000 0000 9995 | Declined |
+| 4000 0000 0000 3220 | 3D Secure required |
+
+## Next Steps
+
+- [Stripe Connect](/docs/services/stripe-connect) - Marketplace payments
+- [Stripe Subscriptions](/docs/services/stripe-subscriptions) - Recurring billing
+- [Payment Processing Module](/docs/modules/payment-processing) - Full module docs

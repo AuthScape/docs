@@ -1,0 +1,135 @@
+---
+title: OpenIddict Setup
+description: Configure OpenIddict for OAuth 2.0 and OpenID Connect in AuthScape.
+---
+
+# OpenIddict Setup
+
+AuthScape uses OpenIddict for OAuth 2.0 and OpenID Connect authentication.
+
+## Overview
+
+OpenIddict provides:
+- Authorization Code Flow with PKCE
+- Client Credentials Flow
+- Refresh Token support
+- Token introspection
+- OpenID Connect discovery
+
+## Configuration
+
+In `AuthenticationManager.cs`:
+
+```csharp
+services.AddOpenIddict()
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore()
+               .UseDbContext<DatabaseContext>();
+    })
+    .AddServer(options =>
+    {
+        // Endpoints
+        options.SetAuthorizationEndpointUris("/connect/authorize")
+               .SetTokenEndpointUris("/connect/token")
+               .SetUserinfoEndpointUris("/connect/userinfo")
+               .SetLogoutEndpointUris("/connect/logout")
+               .SetIntrospectionEndpointUris("/connect/introspect");
+
+        // Scopes
+        options.RegisterScopes(
+            "email",
+            "profile",
+            "roles",
+            "offline_access",
+            "api1"
+        );
+
+        // Flows
+        options.AllowAuthorizationCodeFlow()
+               .RequireProofKeyForCodeExchange();
+        options.AllowRefreshTokenFlow();
+        options.AllowClientCredentialsFlow();
+
+        // Token lifetimes
+        options.SetAccessTokenLifetime(TimeSpan.FromHours(1));
+        options.SetRefreshTokenLifetime(TimeSpan.FromDays(14));
+
+        // Signing credentials
+        options.AddDevelopmentEncryptionCertificate()
+               .AddDevelopmentSigningCertificate();
+
+        // ASP.NET Core integration
+        options.UseAspNetCore()
+               .EnableAuthorizationEndpointPassthrough()
+               .EnableTokenEndpointPassthrough()
+               .EnableUserinfoEndpointPassthrough()
+               .EnableLogoutEndpointPassthrough();
+    })
+    .AddValidation(options =>
+    {
+        options.UseLocalServer();
+        options.UseAspNetCore();
+    });
+```
+
+## Client Registration
+
+Register OAuth clients in your database seeder:
+
+```csharp
+public async Task SeedClients()
+{
+    var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+    // Web application client
+    if (await manager.FindByClientIdAsync("web-app") == null)
+    {
+        await manager.CreateAsync(new OpenIddictApplicationDescriptor
+        {
+            ClientId = "web-app",
+            ClientSecret = "your-secret-here",
+            DisplayName = "Web Application",
+            RedirectUris = { new Uri("https://localhost:3000/callback") },
+            PostLogoutRedirectUris = { new Uri("https://localhost:3000") },
+            Permissions =
+            {
+                Permissions.Endpoints.Authorization,
+                Permissions.Endpoints.Token,
+                Permissions.Endpoints.Logout,
+                Permissions.GrantTypes.AuthorizationCode,
+                Permissions.GrantTypes.RefreshToken,
+                Permissions.ResponseTypes.Code,
+                Permissions.Scopes.Email,
+                Permissions.Scopes.Profile,
+                Permissions.Scopes.Roles,
+                Permissions.Prefixes.Scope + "api1",
+                Permissions.Prefixes.Scope + "offline_access"
+            }
+        });
+    }
+}
+```
+
+## Discovery Endpoint
+
+OpenIddict exposes `/.well-known/openid-configuration`:
+
+```json
+{
+  "issuer": "https://localhost:5001",
+  "authorization_endpoint": "https://localhost:5001/connect/authorize",
+  "token_endpoint": "https://localhost:5001/connect/token",
+  "userinfo_endpoint": "https://localhost:5001/connect/userinfo",
+  "end_session_endpoint": "https://localhost:5001/connect/logout",
+  "scopes_supported": ["openid", "email", "profile", "roles", "api1"],
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"]
+}
+```
+
+## Next Steps
+
+- [Token Endpoints](/docs/authentication/token-endpoints)
+- [Authorization Code Flow](/docs/authentication/authorization-code)
+- [Claims Structure](/docs/authentication/claims)

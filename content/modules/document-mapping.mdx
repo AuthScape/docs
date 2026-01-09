@@ -1,0 +1,64 @@
+---
+title: Document Mapping
+description: Map document fields to data models for automated data extraction.
+---
+
+# Document Mapping
+
+The Document Mapping module enables mapping document fields to data models for automated data extraction from PDFs, forms, and other documents.
+
+## Features
+
+- Field mapping configuration
+- Template-based extraction
+- Azure Form Recognizer integration
+- Custom field definitions
+- Validation rules
+- Batch processing
+
+## Usage
+
+### Create Mapping Template
+
+```javascript
+import { apiService } from 'authscape';
+
+await apiService().post('/api/DocumentMapping/CreateTemplate', {
+  name: 'Invoice Template',
+  documentType: 'invoice',
+  fields: [
+    { name: 'invoiceNumber', type: 'string', required: true },
+    { name: 'amount', type: 'decimal', required: true },
+    { name: 'dueDate', type: 'date', required: false }
+  ]
+});
+```
+
+### Process Document
+
+```javascript
+const result = await apiService().post('/api/DocumentMapping/Process', {
+  documentId: 123,
+  templateId: 456
+});
+// {
+//   invoiceNumber: 'INV-2024-001',
+//   amount: 1500.00,
+//   dueDate: '2024-02-15',
+//   confidence: 0.95
+// }
+```
+
+## Configuration
+
+```json
+{
+  "AppSettings": {
+    "DocumentMapping": {
+      "Provider": "AzureFormRecognizer",
+      "Endpoint": "https://your-resource.cognitiveservices.azure.com",
+      "ApiKey": "your-api-key"
+    }
+  }
+}
+```

@@ -1,0 +1,281 @@
+---
+title: Custom Fields
+description: Extend user profiles with dynamic custom fields using AuthScape's CustomFields system.
+---
+
+# Custom Fields
+
+AuthScape allows you to extend user profiles with dynamic custom fields without modifying the database schema.
+
+## Overview
+
+Custom fields enable you to:
+
+- Add extra user properties (department, employee ID, etc.)
+- Group fields into custom tabs
+- Define field types (text, dropdown, date, etc.)
+- Set validation rules (required fields)
+- Display fields in data grids
+- Filter and search by custom field values
+
+## Custom Field Model
+
+```csharp
+public class CustomField
+{
+    public long Id { get; set; }
+    public string Name { get; set; }
+    public string? Description { get; set; }
+    public CustomFieldType FieldType { get; set; }
+    public bool IsRequired { get; set; }
+    public int? GridSize { get; set; }  // 1-12 for grid layout
+    public bool ShowInDatagrid { get; set; }
+    public long? TabId { get; set; }
+    public CustomTab? Tab { get; set; }
+    public ICollection<CustomFieldOption>? Options { get; set; }
+}
+
+public enum CustomFieldType
+{
+    Text = 0,
+    Number = 1,
+    Date = 2,
+    Dropdown = 3,
+    Checkbox = 4,
+    TextArea = 5,
+    Email = 6,
+    Phone = 7,
+    Url = 8
+}
+```
+
+## Custom Field Result
+
+When fetching a user, custom fields are populated:
+
+```csharp
+public class CustomFieldResult
+{
+    public long FieldId { get; set; }
+    public string Name { get; set; }
+    public string? Value { get; set; }
+    public CustomFieldType FieldType { get; set; }
+    public bool IsRequired { get; set; }
+    public List<CustomFieldOption>? Options { get; set; }
+}
+```
+
+## React Custom Fields Component
+
+AuthScape includes a management component for custom fields:
+
+```jsx
+import { CustomFields } from 'authscape-usermanagement';
+
+export default function CustomFieldsAdmin() {
+  return (
+    <CustomFields
+      onFieldCreated={(field) => {
+        console.log('Field created:', field);
+      }}
+      onFieldUpdated={(field) => {
+        console.log('Field updated:', field);
+      }}
+      onFieldDeleted={(fieldId) => {
+        console.log('Field deleted:', fieldId);
+      }}
+    />
+  );
+}
+```
+
+### Component Features
+
+- **Field List** - View all custom fields
+- **Create Field** - Add new fields with type selection
+- **Edit Field** - Modify field properties
+- **Delete Field** - Remove unused fields
+- **Tab Management** - Organize fields into tabs
+- **Option Management** - For dropdown fields
+
+## Creating Custom Fields via API
+
+```javascript
+import { apiService } from 'authscape';
+
+// Create a text field
+await apiService().post('/CustomFields/Create', {
+  name: 'Employee ID',
+  description: 'Unique employee identifier',
+  fieldType: 0,  // Text
+  isRequired: true,
+  gridSize: 6,   // Half width
+  showInDatagrid: true,
+  tabId: null    // No tab (shows on main profile)
+});
+
+// Create a dropdown field
+await apiService().post('/CustomFields/Create', {
+  name: 'Department',
+  description: 'Employee department',
+  fieldType: 3,  // Dropdown
+  isRequired: true,
+  gridSize: 6,
+  showInDatagrid: true,
+  options: [
+    { label: 'Engineering' },
+    { label: 'Marketing' },
+    { label: 'Sales' },
+    { label: 'HR' }
+  ]
+});
+
+// Create a date field
+await apiService().post('/CustomFields/Create', {
+  name: 'Start Date',
+  description: 'Employee start date',
+  fieldType: 2,  // Date
+  isRequired: false,
+  gridSize: 4,
+  showInDatagrid: false
+});
+```
+
+## Custom Tabs
+
+Organize custom fields into tabs:
+
+```javascript
+// Create a custom tab
+await apiService().post('/CustomFields/CreateTab', {
+  name: 'Employment Info',
+  order: 1
+});
+
+// Assign field to tab
+await apiService().put('/CustomFields/Update', {
+  id: fieldId,
+  tabId: tabId,
+  // ... other field properties
+});
+```
+
+## Displaying Custom Fields
+
+In the User Editor, custom fields render automatically:
+
+```jsx
+import { UserEditor } from 'authscape-usermanagement';
+
+export default function EditUser({ userId }) {
+  return (
+    <UserEditor
+      userId={userId}
+      platformType={1}
+      onSaved={() => console.log('Saved')}
+    />
+  );
+}
+
+// The UserEditor automatically renders:
+// - Tab: "Basic Info" (default user fields)
+// - Tab: "Custom Fields" (or your custom tab names)
+// - Tab: "Roles & Permissions"
+```
+
+## Saving Custom Field Values
+
+```javascript
+// Update user with custom field values
+await apiService().put('/UserManagement/EditUser', {
+  id: userId,
+  firstName: 'John',
+  lastName: 'Doe',
+  customFields: [
+    { fieldId: 1, value: 'EMP001' },
+    { fieldId: 2, value: 'Engineering' },
+    { fieldId: 3, value: '2024-01-15' }
+  ]
+});
+```
+
+## Reading Custom Field Values
+
+```javascript
+// Get user with custom fields
+const user = await apiService().get(`/Users/GetUser?id=${userId}`);
+
+// Access custom fields
+user.customFields.forEach(field => {
+  console.log(`${field.name}: ${field.value}`);
+});
+
+// Find specific field
+const employeeId = user.customFields.find(f => f.name === 'Employee ID')?.value;
+```
+
+## Filtering by Custom Fields
+
+```javascript
+// Search users by custom field value
+const users = await apiService().post('/Users/GetAllUsers', {
+  offset: 0,
+  length: 50,
+  customFieldFilters: [
+    { fieldId: 2, value: 'Engineering' }
+  ]
+});
+```
+
+## Field Types Reference
+
+| Type | Value | Description |
+|------|-------|-------------|
+| Text | 0 | Single line text input |
+| Number | 1 | Numeric input |
+| Date | 2 | Date picker |
+| Dropdown | 3 | Select from options |
+| Checkbox | 4 | Boolean checkbox |
+| TextArea | 5 | Multi-line text |
+| Email | 6 | Email with validation |
+| Phone | 7 | Phone number input |
+| Url | 8 | URL with validation |
+
+## Grid Size
+
+The `gridSize` property controls field width in a 12-column grid:
+
+| Grid Size | Width |
+|-----------|-------|
+| 12 | Full width |
+| 6 | Half width |
+| 4 | One-third |
+| 3 | One-quarter |
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/CustomFields/GetAll` | GET | List all custom fields |
+| `/api/CustomFields/Get` | GET | Get field by ID |
+| `/api/CustomFields/Create` | POST | Create new field |
+| `/api/CustomFields/Update` | PUT | Update field |
+| `/api/CustomFields/Delete` | DELETE | Delete field |
+| `/api/CustomFields/GetTabs` | GET | List all tabs |
+| `/api/CustomFields/CreateTab` | POST | Create new tab |
+| `/api/CustomFields/UpdateTab` | PUT | Update tab |
+| `/api/CustomFields/DeleteTab` | DELETE | Delete tab |
+
+## Best Practices
+
+1. **Use descriptive names** - "Employee ID" not "EID"
+2. **Set appropriate grid sizes** - Group related fields together
+3. **Make critical fields required** - Employee ID, Department
+4. **Use dropdowns for fixed options** - Prevents typos
+5. **Organize with tabs** - Group related fields logically
+6. **Enable datagrid display** - For commonly searched fields
+
+## Next Steps
+
+- [Invitations](/docs/admin/invitations) - Email-based user onboarding
+- [User Management](/docs/admin/user-management) - User CRUD operations

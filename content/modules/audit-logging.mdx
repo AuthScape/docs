@@ -1,0 +1,259 @@
+---
+title: Audit Logging
+description: Track all system changes, user actions, and maintain compliance with audit trails.
+---
+
+# Audit Logging
+
+The Audit Logging module provides comprehensive tracking of all system changes and user actions, essential for compliance, debugging, and security monitoring.
+
+## Features
+
+- Automatic tracking of entity changes
+- User action logging
+- Login/logout tracking
+- API call logging
+- Configurable retention policies
+- Query and export capabilities
+
+## Automatic Entity Tracking
+
+All database changes are automatically tracked:
+
+```csharp
+// When you save changes, auditing happens automatically
+var user = new User { Email = "test@example.com" };
+await _context.Users.AddAsync(user);
+await _context.SaveChangesAsync();
+
+// An audit log entry is created:
+// {
+//   "EntityType": "User",
+//   "Action": "Create",
+//   "EntityId": "123",
+//   "Changes": { "Email": "test@example.com" },
+//   "UserId": 456,
+//   "Timestamp": "2024-01-01T12:00:00Z"
+// }
+```
+
+## Configuration
+
+### Enable Audit Logging
+
+```json
+{
+  "AppSettings": {
+    "AuditLogging": {
+      "Enabled": true,
+      "RetentionDays": 90,
+      "LogApiCalls": true,
+      "LogEntityChanges": true,
+      "ExcludedEntities": ["AuditLog", "RefreshToken"]
+    }
+  }
+}
+```
+
+### Register Audit Services
+
+```csharp
+services.AddAuditLogging(Configuration);
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/AuditLog/Query` | POST | Search audit logs |
+| `/api/AuditLog/GetById/{id}` | GET | Get specific log entry |
+| `/api/AuditLog/Export` | POST | Export logs to CSV/JSON |
+| `/api/AuditLog/UserActivity/{userId}` | GET | Get user's activity |
+
+## Query Audit Logs
+
+### From Next.js
+
+```javascript
+import { apiService } from 'authscape';
+
+const logs = await apiService().post('/api/AuditLog/Query', {
+  startDate: '2024-01-01',
+  endDate: '2024-01-31',
+  entityType: 'User',
+  action: 'Update',
+  userId: 123,
+  page: 1,
+  pageSize: 50
+});
+```
+
+### From Backend
+
+```csharp
+public class AuditLogService : IAuditLogService
+{
+    private readonly DatabaseContext _context;
+
+    public async Task<List<AuditLog>> QueryAsync(AuditLogQuery query)
+    {
+        var logs = _context.AuditLogs.AsQueryable();
+
+        if (query.StartDate.HasValue)
+            logs = logs.Where(l => l.Timestamp >= query.StartDate);
+
+        if (query.EndDate.HasValue)
+            logs = logs.Where(l => l.Timestamp <= query.EndDate);
+
+        if (!string.IsNullOrEmpty(query.EntityType))
+            logs = logs.Where(l => l.EntityType == query.EntityType);
+
+        if (query.UserId.HasValue)
+            logs = logs.Where(l => l.UserId == query.UserId);
+
+        return await logs
+            .OrderByDescending(l => l.Timestamp)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .ToListAsync();
+    }
+}
+```
+
+## Audit Log Model
+
+```csharp
+public class AuditLog
+{
+    public long Id { get; set; }
+    public string EntityType { get; set; }
+    public string EntityId { get; set; }
+    public string Action { get; set; }  // Create, Update, Delete
+    public string OldValues { get; set; }  // JSON
+    public string NewValues { get; set; }  // JSON
+    public long? UserId { get; set; }
+    public string UserEmail { get; set; }
+    public string IpAddress { get; set; }
+    public string UserAgent { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+```
+
+## Custom Action Logging
+
+Log custom actions beyond entity changes:
+
+```csharp
+public class PaymentService
+{
+    private readonly IAuditLogService _auditLog;
+
+    public async Task ProcessPayment(PaymentRequest request)
+    {
+        // Process payment...
+
+        // Log custom action
+        await _auditLog.LogActionAsync(new AuditAction
+        {
+            Action = "PaymentProcessed",
+            EntityType = "Payment",
+            EntityId = payment.Id.ToString(),
+            Details = new
+            {
+                Amount = request.Amount,
+                Currency = request.Currency,
+                PaymentMethod = request.PaymentMethod
+            }
+        });
+    }
+}
+```
+
+## Login/Logout Tracking
+
+Authentication events are automatically logged:
+
+```csharp
+public class AuthenticationEventHandler
+{
+    private readonly IAuditLogService _auditLog;
+
+    public async Task OnLoginSuccess(LoginSuccessEvent e)
+    {
+        await _auditLog.LogActionAsync(new AuditAction
+        {
+            Action = "Login",
+            EntityType = "Authentication",
+            UserId = e.UserId,
+            IpAddress = e.IpAddress,
+            Details = new { Method = e.AuthMethod }
+        });
+    }
+
+    public async Task OnLoginFailed(LoginFailedEvent e)
+    {
+        await _auditLog.LogActionAsync(new AuditAction
+        {
+            Action = "LoginFailed",
+            EntityType = "Authentication",
+            Details = new
+            {
+                Email = e.Email,
+                Reason = e.FailureReason,
+                IpAddress = e.IpAddress
+            }
+        });
+    }
+}
+```
+
+## Export Logs
+
+Export audit logs for compliance or analysis:
+
+```javascript
+const exportData = await apiService().post('/api/AuditLog/Export', {
+  startDate: '2024-01-01',
+  endDate: '2024-01-31',
+  format: 'csv'  // or 'json'
+});
+
+// Download the file
+const blob = new Blob([exportData], { type: 'text/csv' });
+const url = window.URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'audit-logs.csv';
+a.click();
+```
+
+## Retention and Cleanup
+
+Configure automatic cleanup of old logs:
+
+```csharp
+public class AuditLogCleanupJob : IHostedService
+{
+    private readonly IServiceProvider _services;
+    private readonly int _retentionDays;
+
+    public async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var scope = _services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+
+        var cutoffDate = DateTime.UtcNow.AddDays(-_retentionDays);
+        await context.AuditLogs
+            .Where(l => l.Timestamp < cutoffDate)
+            .ExecuteDeleteAsync();
+    }
+}
+```
+
+## Best Practices
+
+1. **Don't log sensitive data** - Exclude passwords, tokens, and PII from audit logs
+2. **Use retention policies** - Delete old logs to manage storage
+3. **Index frequently queried fields** - EntityType, UserId, Timestamp
+4. **Monitor for anomalies** - Set up alerts for suspicious activity
+5. **Secure audit logs** - Restrict access to audit data

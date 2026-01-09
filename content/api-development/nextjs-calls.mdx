@@ -1,0 +1,155 @@
+---
+title: API Calls from Next.js
+description: Making authenticated API calls from Next.js to AuthScape backend.
+---
+
+# API Calls from Next.js
+
+AuthScape provides the `apiService` helper for making authenticated API calls from your Next.js frontend.
+
+## Setup
+
+Import from the authscape package:
+
+```javascript
+import { apiService } from 'authscape';
+```
+
+## GET Requests
+
+```javascript
+// Simple GET
+const users = await apiService().get('/Users/GetAllUsers');
+
+// With query parameters
+const user = await apiService().get(`/Users/GetUser?id=${userId}`);
+
+// With complex query
+const filtered = await apiService().get('/Users/Search?query=john&role=admin');
+```
+
+## POST Requests
+
+```javascript
+// Create resource
+const result = await apiService().post('/Users/Create', {
+  email: 'user@example.com',
+  firstName: 'John',
+  lastName: 'Doe'
+});
+
+// With pagination
+const users = await apiService().post('/Users/GetAllUsers', {
+  offset: 0,
+  length: 25,
+  sortBy: 'email',
+  sortDirection: 'asc'
+});
+```
+
+## PUT Requests
+
+```javascript
+const updated = await apiService().put('/Users/Update', {
+  id: userId,
+  firstName: 'Jane',
+  lastName: 'Smith'
+});
+```
+
+## DELETE Requests
+
+```javascript
+await apiService().delete(`/Users/Delete?id=${userId}`);
+```
+
+## File Upload
+
+```javascript
+const formData = new FormData();
+formData.append('file', file);
+
+const result = await apiService().post('/Files/Upload', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+});
+```
+
+## Error Handling
+
+```javascript
+try {
+  const data = await apiService().get('/api/endpoint');
+} catch (error) {
+  if (error.response?.status === 401) {
+    // Unauthorized - redirect to login
+    authService().login();
+  } else if (error.response?.status === 403) {
+    // Forbidden - show access denied
+    console.error('Access denied');
+  } else {
+    console.error('API error:', error.message);
+  }
+}
+```
+
+## With Loading State
+
+```javascript
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+
+function UserList() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function loadUsers() {
+      try {
+        const data = await apiService().get('/Users/GetAllUsers');
+        setUsers(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadUsers();
+  }, []);
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
+
+  return (
+    <ul>
+      {users.map(user => (
+        <li key={user.id}>{user.email}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Custom Headers
+
+```javascript
+const response = await apiService().get('/api/endpoint', {
+  headers: {
+    'X-Custom-Header': 'value',
+    'Accept-Language': 'en-US'
+  }
+});
+```
+
+## Timeout Configuration
+
+```javascript
+const response = await apiService().get('/api/slow-endpoint', {
+  timeout: 30000  // 30 seconds
+});
+```
+
+## Next Steps
+
+- [Protecting Endpoints](/docs/api-development/protect-endpoints)
+- [User Information](/docs/api-development/user-info)

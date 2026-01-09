@@ -1,0 +1,187 @@
+---
+title: API Development Overview
+description: Learn how to build secure APIs with AuthScape, protect endpoints, and access user information.
+---
+
+# API Development Overview
+
+AuthScape provides a robust foundation for building secure APIs. This guide covers protecting endpoints, accessing user information, and integrating with the Next.js frontend.
+
+## API Controller Pattern
+
+The standard pattern for AuthScape API controllers:
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class UsersController : ControllerBase
+{
+    private readonly IUserManagementService _userService;
+
+    public UsersController(IUserManagementService userService)
+    {
+        _userService = userService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetCurrentUser()
+    {
+        var user = await _userService.GetSignedInUser();
+        return Ok(user);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetUser(long id)
+    {
+        // Your logic here
+        return Ok();
+    }
+}
+```
+
+## Key Concepts
+
+### Authentication Scheme
+
+Use the OpenIddict validation scheme for JWT bearer token authentication:
+
+```csharp
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+```
+
+### User Information
+
+Access the current user via `IUserManagementService`:
+
+```csharp
+var signedInUser = await _userService.GetSignedInUser();
+
+// Access properties
+var userId = signedInUser.Id;
+var email = signedInUser.Email;
+var companyId = signedInUser.CompanyId;
+var roles = signedInUser.Roles;
+var permissions = signedInUser.Permissions;
+```
+
+### Role-Based Authorization
+
+Restrict endpoints by role:
+
+```csharp
+[Authorize(Roles = "Admin")]
+public IActionResult AdminOnly()
+{
+    return Ok("Admin access granted");
+}
+```
+
+## Making API Calls from Next.js
+
+### Using the AuthScape npm package
+
+```javascript
+import { authService } from 'authscape';
+
+// GET request
+const response = await authService().get('/api/users/GetCurrentUser');
+
+// POST request
+const result = await authService().post('/api/users/Create', {
+    firstName: 'John',
+    lastName: 'Doe',
+    email: 'john@example.com'
+});
+```
+
+### Using fetch with token
+
+```javascript
+const token = authService().getAccessToken();
+
+const response = await fetch('https://api.example.com/api/users/GetCurrentUser', {
+    headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    }
+});
+
+const data = await response.json();
+```
+
+## Response Patterns
+
+### Standard Response
+
+```csharp
+[HttpGet]
+public async Task<IActionResult> GetUser(long id)
+{
+    var user = await _userRepository.GetByIdAsync(id);
+
+    if (user == null)
+        return NotFound();
+
+    return Ok(user);
+}
+```
+
+### Paginated Response
+
+AuthScape uses a standard pattern for paginated data:
+
+```csharp
+public class ReactDataTable<T>
+{
+    public int draw { get; set; }
+    public int recordsTotal { get; set; }
+    public int recordsFiltered { get; set; }
+    public List<T> data { get; set; }
+}
+```
+
+```csharp
+[HttpGet]
+public async Task<IActionResult> GetUsers(int page, int pageSize)
+{
+    var users = await _userRepository.GetPagedAsync(page, pageSize);
+
+    return Ok(new ReactDataTable<User>
+    {
+        draw = page,
+        recordsTotal = users.TotalCount,
+        recordsFiltered = users.FilteredCount,
+        data = users.Items
+    });
+}
+```
+
+## Error Handling
+
+```csharp
+[HttpPost]
+public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
+{
+    try
+    {
+        var user = await _userService.CreateAsync(request);
+        return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+    }
+    catch (ValidationException ex)
+    {
+        return BadRequest(new { errors = ex.Errors });
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new { error = "An error occurred" });
+    }
+}
+```
+
+## Next Steps
+
+- [API Calls from Next.js](/docs/api-development/nextjs-calls) - Frontend integration
+- [Protecting Endpoints](/docs/api-development/protect-endpoints) - Authorization patterns
+- [User Information](/docs/api-development/user-info) - Accessing user data
+- [SignedInUser Object](/docs/api-development/signed-in-user) - User object structure

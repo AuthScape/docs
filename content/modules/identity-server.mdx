@@ -1,0 +1,337 @@
+---
+title: Identity Server
+description: Manage OAuth2/OpenID Connect applications, scopes, tokens, and authentication settings.
+---
+
+# Identity Server
+
+The Identity Server module provides administration for OAuth2/OpenID Connect applications, scopes, token management, and authentication settings powered by OpenIddict.
+
+## Features
+
+- Application registration and management
+- Scope and permission configuration
+- Token introspection and revocation
+- Client credentials management
+- Authorization code flow configuration
+- Third-party identity providers
+- Custom claims configuration
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/IdentityServer/Applications` | GET | List applications |
+| `/api/IdentityServer/Applications` | POST | Create application |
+| `/api/IdentityServer/Applications/{id}` | PUT | Update application |
+| `/api/IdentityServer/Scopes` | GET | List scopes |
+| `/api/IdentityServer/Scopes` | POST | Create scope |
+| `/api/IdentityServer/Tokens/Revoke` | POST | Revoke tokens |
+
+## Applications
+
+### List Applications
+
+```javascript
+import { apiService } from 'authscape';
+
+const apps = await apiService().get('/api/IdentityServer/Applications');
+// [
+//   {
+//     id: 'spa-client',
+//     displayName: 'Web Application',
+//     type: 'public',
+//     redirectUris: ['https://app.yoursite.com/callback'],
+//     permissions: ['openid', 'email', 'profile'],
+//     createdAt: '2024-01-01'
+//   }
+// ]
+```
+
+### Create Application
+
+```javascript
+await apiService().post('/api/IdentityServer/Applications', {
+  clientId: 'mobile-app',
+  displayName: 'Mobile Application',
+  type: 'public',  // 'public' or 'confidential'
+  redirectUris: [
+    'myapp://callback',
+    'https://app.yoursite.com/callback'
+  ],
+  postLogoutRedirectUris: [
+    'myapp://logout',
+    'https://app.yoursite.com'
+  ],
+  permissions: [
+    'openid',
+    'email',
+    'profile',
+    'offline_access'
+  ]
+});
+```
+
+### Create Confidential Client
+
+For server-to-server authentication:
+
+```javascript
+const app = await apiService().post('/api/IdentityServer/Applications', {
+  clientId: 'backend-service',
+  displayName: 'Backend Service',
+  type: 'confidential',
+  clientSecret: 'generate-secure-secret',
+  permissions: [
+    'client_credentials'
+  ],
+  scopes: ['api']
+});
+```
+
+## Scopes
+
+### Available Scopes
+
+| Scope | Description | Claims |
+|-------|-------------|--------|
+| `openid` | Required for OIDC | `sub` |
+| `email` | Email address | `email`, `email_verified` |
+| `profile` | Basic profile | `given_name`, `family_name` |
+| `roles` | User roles | `role` |
+| `offline_access` | Refresh tokens | - |
+| `api` | API access | - |
+
+### Create Custom Scope
+
+```javascript
+await apiService().post('/api/IdentityServer/Scopes', {
+  name: 'billing',
+  displayName: 'Billing Access',
+  description: 'Access to billing and payment information',
+  resources: ['billing-api'],
+  claims: ['billing_admin', 'can_refund']
+});
+```
+
+## Token Management
+
+### Revoke User Tokens
+
+```javascript
+// Revoke all tokens for a user (force logout everywhere)
+await apiService().post('/api/IdentityServer/Tokens/Revoke', {
+  userId: 123
+});
+```
+
+### Revoke Application Tokens
+
+```javascript
+// Revoke all tokens for an application
+await apiService().post('/api/IdentityServer/Tokens/RevokeByApp', {
+  clientId: 'compromised-client'
+});
+```
+
+### Token Introspection
+
+```csharp
+// Backend: Check if token is valid
+[HttpPost]
+public async Task<IActionResult> Introspect([FromBody] IntrospectRequest request)
+{
+    var result = await _tokenService.IntrospectAsync(request.Token);
+    return Ok(new
+    {
+        active = result.IsActive,
+        sub = result.Subject,
+        client_id = result.ClientId,
+        exp = result.ExpiresAt
+    });
+}
+```
+
+## Backend Implementation
+
+### ApplicationController
+
+```csharp
+[Route("api/IdentityServer/[action]")]
+[ApiController]
+[Authorize(Roles = "Admin")]
+public class IdentityServerController : ControllerBase
+{
+    private readonly IOpenIddictApplicationManager _applicationManager;
+    private readonly IOpenIddictScopeManager _scopeManager;
+
+    [HttpGet]
+    public async Task<IActionResult> Applications()
+    {
+        var apps = new List<object>();
+
+        await foreach (var app in _applicationManager.ListAsync())
+        {
+            apps.Add(new
+            {
+                Id = await _applicationManager.GetClientIdAsync(app),
+                DisplayName = await _applicationManager.GetDisplayNameAsync(app),
+                Type = await _applicationManager.GetClientTypeAsync(app),
+                RedirectUris = await _applicationManager.GetRedirectUrisAsync(app),
+                Permissions = await _applicationManager.GetPermissionsAsync(app)
+            });
+        }
+
+        return Ok(apps);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Applications([FromBody] CreateAppRequest request)
+    {
+        var descriptor = new OpenIddictApplicationDescriptor
+        {
+            ClientId = request.ClientId,
+            DisplayName = request.DisplayName,
+            ClientType = request.Type == "public"
+                ? OpenIddictConstants.ClientTypes.Public
+                : OpenIddictConstants.ClientTypes.Confidential
+        };
+
+        foreach (var uri in request.RedirectUris)
+            descriptor.RedirectUris.Add(new Uri(uri));
+
+        foreach (var permission in request.Permissions)
+            descriptor.Permissions.Add(GetPermission(permission));
+
+        if (!string.IsNullOrEmpty(request.ClientSecret))
+            descriptor.ClientSecret = request.ClientSecret;
+
+        await _applicationManager.CreateAsync(descriptor);
+        return Ok();
+    }
+}
+```
+
+## Configuration
+
+### Token Lifetimes
+
+```json
+{
+  "AppSettings": {
+    "IdentityServer": {
+      "AccessTokenLifetimeMinutes": 60,
+      "RefreshTokenLifetimeDays": 14,
+      "AuthorizationCodeLifetimeMinutes": 5,
+      "RequirePKCE": true,
+      "AllowPasswordFlow": false
+    }
+  }
+}
+```
+
+### Register in Startup
+
+```csharp
+services.AddOpenIddict()
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore()
+            .UseDbContext<DatabaseContext>();
+    })
+    .AddServer(options =>
+    {
+        options.SetAuthorizationEndpointUris("/connect/authorize")
+            .SetTokenEndpointUris("/connect/token")
+            .SetLogoutEndpointUris("/connect/logout")
+            .SetUserinfoEndpointUris("/connect/userinfo")
+            .SetIntrospectionEndpointUris("/connect/introspect");
+
+        options.AllowAuthorizationCodeFlow()
+            .RequireProofKeyForCodeExchange()
+            .AllowRefreshTokenFlow()
+            .AllowClientCredentialsFlow();
+
+        options.SetAccessTokenLifetime(TimeSpan.FromMinutes(60));
+        options.SetRefreshTokenLifetime(TimeSpan.FromDays(14));
+
+        options.AddDevelopmentEncryptionCertificate()
+            .AddDevelopmentSigningCertificate();
+    })
+    .AddValidation(options =>
+    {
+        options.UseLocalServer();
+        options.UseAspNetCore();
+    });
+```
+
+## Admin Dashboard
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import {
+  Table, TableBody, TableCell, TableHead, TableRow,
+  Paper, Button, Dialog, TextField
+} from '@mui/material';
+
+export default function ApplicationsAdmin() {
+  const [apps, setApps] = useState([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    loadApps();
+  }, []);
+
+  async function loadApps() {
+    const data = await apiService().get('/api/IdentityServer/Applications');
+    setApps(data);
+  }
+
+  async function createApp(appData) {
+    await apiService().post('/api/IdentityServer/Applications', appData);
+    setDialogOpen(false);
+    loadApps();
+  }
+
+  return (
+    <Paper sx={{ p: 2 }}>
+      <Button variant="contained" onClick={() => setDialogOpen(true)}>
+        New Application
+      </Button>
+
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Client ID</TableCell>
+            <TableCell>Display Name</TableCell>
+            <TableCell>Type</TableCell>
+            <TableCell>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {apps.map(app => (
+            <TableRow key={app.id}>
+              <TableCell>{app.id}</TableCell>
+              <TableCell>{app.displayName}</TableCell>
+              <TableCell>{app.type}</TableCell>
+              <TableCell>
+                <Button>Edit</Button>
+                <Button color="error">Delete</Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Paper>
+  );
+}
+```
+
+## Best Practices
+
+1. **Use PKCE** - Always require PKCE for public clients
+2. **Short token lifetimes** - Access tokens should expire quickly
+3. **Rotate secrets** - Regularly rotate client secrets
+4. **Audit access** - Log all token issuances and revocations
+5. **Minimal scopes** - Only request scopes you need

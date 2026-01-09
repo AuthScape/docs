@@ -1,0 +1,118 @@
+---
+title: Forms
+description: Dynamic form builder with submissions, validation, and workflow integration.
+---
+
+# Forms
+
+The Forms module provides a dynamic form builder for creating custom forms with validation, conditional logic, and submission handling.
+
+## Features
+
+- Drag-and-drop form builder
+- Multiple field types
+- Validation rules
+- Conditional logic
+- File uploads in forms
+- Submission management
+- Email notifications
+
+## Field Types
+
+- Text, Email, Phone
+- Number, Currency
+- Date, DateTime
+- Dropdown, Multi-select
+- Checkbox, Radio
+- File Upload
+- Rich Text
+- Signature
+
+## Usage
+
+### Create Form
+
+```javascript
+import { apiService } from 'authscape';
+
+const form = await apiService().post('/api/Forms/Create', {
+  name: 'Contact Form',
+  fields: [
+    { name: 'name', type: 'text', label: 'Full Name', required: true },
+    { name: 'email', type: 'email', label: 'Email', required: true },
+    { name: 'message', type: 'textarea', label: 'Message', required: true }
+  ],
+  settings: {
+    submitButtonText: 'Send Message',
+    successMessage: 'Thank you for your message!'
+  }
+});
+```
+
+### Submit Form
+
+```javascript
+await apiService().post('/api/Forms/Submit', {
+  formId: 123,
+  data: {
+    name: 'John Doe',
+    email: 'john@example.com',
+    message: 'Hello!'
+  }
+});
+```
+
+### Get Submissions
+
+```javascript
+const submissions = await apiService().get('/api/Forms/Submissions/123');
+```
+
+## React Form Renderer
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import { TextField, Button, Box } from '@mui/material';
+
+export default function FormRenderer({ formId }) {
+  const [form, setForm] = useState(null);
+  const [values, setValues] = useState({});
+
+  useEffect(() => {
+    loadForm();
+  }, [formId]);
+
+  async function loadForm() {
+    const data = await apiService().get(`/api/Forms/Get/${formId}`);
+    setForm(data);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    await apiService().post('/api/Forms/Submit', { formId, data: values });
+    alert(form.settings.successMessage);
+  }
+
+  if (!form) return null;
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {form.fields.map(field => (
+        <TextField
+          key={field.name}
+          label={field.label}
+          required={field.required}
+          value={values[field.name] || ''}
+          onChange={(e) => setValues({ ...values, [field.name]: e.target.value })}
+          sx={{ mb: 2 }}
+          fullWidth
+        />
+      ))}
+      <Button type="submit" variant="contained">
+        {form.settings.submitButtonText}
+      </Button>
+    </form>
+  );
+}
+```

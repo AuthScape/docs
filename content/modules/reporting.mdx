@@ -1,0 +1,81 @@
+---
+title: Reporting
+description: Dynamic report generation with scheduling and export capabilities.
+---
+
+# Reporting
+
+The Reporting module provides dynamic report generation, scheduling, and export to various formats.
+
+## Features
+
+- Report builder
+- Scheduled reports
+- Multiple export formats (PDF, Excel, CSV)
+- Data visualization
+- Report templates
+- Email delivery
+
+## Usage
+
+### Generate Report
+
+```javascript
+import { apiService } from 'authscape';
+
+const report = await apiService().post('/api/Reports/Generate', {
+  templateId: 'monthly-sales',
+  parameters: {
+    startDate: '2024-01-01',
+    endDate: '2024-01-31',
+    region: 'North'
+  },
+  format: 'pdf'
+});
+
+// Download the report
+const blob = new Blob([report], { type: 'application/pdf' });
+const url = window.URL.createObjectURL(blob);
+window.open(url);
+```
+
+### Schedule Report
+
+```javascript
+await apiService().post('/api/Reports/Schedule', {
+  templateId: 'monthly-sales',
+  frequency: 'monthly',
+  dayOfMonth: 1,
+  recipients: ['manager@company.com'],
+  format: 'excel'
+});
+```
+
+### List Report Templates
+
+```javascript
+const templates = await apiService().get('/api/Reports/Templates');
+```
+
+## Backend Implementation
+
+```csharp
+[HttpPost]
+public async Task<IActionResult> Generate([FromBody] ReportRequest request)
+{
+    var data = await _reportService.GetReportDataAsync(
+        request.TemplateId,
+        request.Parameters
+    );
+
+    var bytes = request.Format switch
+    {
+        "pdf" => await _pdfService.GenerateAsync(data),
+        "excel" => await _excelService.GenerateAsync(data),
+        "csv" => await _csvService.GenerateAsync(data),
+        _ => throw new ArgumentException("Invalid format")
+    };
+
+    return File(bytes, GetContentType(request.Format), $"report.{request.Format}");
+}
+```

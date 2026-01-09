@@ -1,0 +1,353 @@
+---
+title: Roles & Permissions
+description: Configure role-based access control (RBAC) with AuthScape's RoleService and PermissionService.
+---
+
+# Roles & Permissions
+
+AuthScape provides a complete Role-Based Access Control (RBAC) system built on ASP.NET Identity with additional permission management.
+
+## Role Service
+
+The `IRoleService` manages roles:
+
+```csharp
+public interface IRoleService
+{
+    Task AddRole(string name);
+    Task DeleteRole(long Id);
+    Task ChangeName(long Id, string name);
+    Task<List<RoleDto>> GetAllRolesAsync();
+    Task<RoleDto?> GetRoleByIdAsync(long id);
+    Task<bool> CreateRoleAsync(CreateRoleDto dto);
+    Task<bool> UpdateRoleAsync(UpdateRoleDto dto);
+    Task<bool> DeleteRoleAsync(long id);
+    Task<bool> RoleExistsAsync(string name, long? excludeId = null);
+}
+```
+
+### Role DTO
+
+```csharp
+public class RoleDto
+{
+    public long Id { get; set; }
+    public string Name { get; set; }
+    public string? NormalizedName { get; set; }
+    public int UserCount { get; set; }
+    public DateTime? CreatedDate { get; set; }
+}
+```
+
+### Creating a Role
+
+```csharp
+public class RoleService : IRoleService
+{
+    readonly DatabaseContext context;
+    private readonly RoleManager<Role> roleManager;
+    private readonly UserManager<AppUser> userManager;
+
+    public async Task<bool> CreateRoleAsync(CreateRoleDto dto)
+    {
+        var role = new Role
+        {
+            Name = dto.Name
+        };
+
+        var result = await roleManager.CreateAsync(role);
+        return result.Succeeded;
+    }
+
+    public async Task AddRole(string name)
+    {
+        var newRole = new Role()
+        {
+            Name = name,
+            NormalizedName = name.ToUpper(),
+            ConcurrencyStamp = Guid.NewGuid().ToString()
+        };
+
+        await context.Roles.AddAsync(newRole);
+        await context.SaveChangesAsync();
+    }
+}
+```
+
+### Getting All Roles with User Count
+
+```csharp
+public async Task<List<RoleDto>> GetAllRolesAsync()
+{
+    var roles = await roleManager.Roles.ToListAsync();
+    var roleDtos = new List<RoleDto>();
+
+    foreach (var role in roles)
+    {
+        var usersInRole = await userManager.GetUsersInRoleAsync(role.Name!);
+
+        roleDtos.Add(new RoleDto
+        {
+            Id = role.Id,
+            Name = role.Name!,
+            NormalizedName = role.NormalizedName,
+            UserCount = usersInRole.Count
+        });
+    }
+
+    return roleDtos.OrderBy(r => r.Name).ToList();
+}
+```
+
+### Deleting a Role (with validation)
+
+```csharp
+public async Task<bool> DeleteRoleAsync(long id)
+{
+    var role = await roleManager.FindByIdAsync(id.ToString());
+    if (role == null)
+        return false;
+
+    // Cannot delete role with assigned users
+    var usersInRole = await userManager.GetUsersInRoleAsync(role.Name!);
+    if (usersInRole.Any())
+        return false;
+
+    var result = await roleManager.DeleteAsync(role);
+    return result.Succeeded;
+}
+```
+
+## Permission Service
+
+The `IPermissionService` manages granular permissions:
+
+```csharp
+public interface IPermissionService
+{
+    Task<List<PermissionDto>> GetAllPermissionsAsync();
+    Task<PermissionDto?> GetPermissionByIdAsync(Guid id);
+    Task<bool> CreatePermissionAsync(CreatePermissionDto dto);
+    Task<bool> UpdatePermissionAsync(UpdatePermissionDto dto);
+    Task<bool> DeletePermissionAsync(Guid id);
+    Task<bool> PermissionExistsAsync(string name, Guid? excludeId = null);
+}
+```
+
+### Permission DTO
+
+```csharp
+public class PermissionDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; }
+}
+
+public class Permission
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; }
+}
+```
+
+### Creating a Permission
+
+```csharp
+public async Task<bool> CreatePermissionAsync(CreatePermissionDto dto)
+{
+    var permission = new Permission
+    {
+        Id = Guid.NewGuid(),
+        Name = dto.Name
+    };
+
+    await context.Permissions.AddAsync(permission);
+    await context.SaveChangesAsync();
+    return true;
+}
+```
+
+### Getting All Permissions
+
+```csharp
+public async Task<List<PermissionDto>> GetAllPermissionsAsync()
+{
+    var permissions = await context.Permissions.ToListAsync();
+
+    return permissions.Select(p => new PermissionDto
+    {
+        Id = p.Id,
+        Name = p.Name
+    }).OrderBy(p => p.Name).ToList();
+}
+```
+
+## Assigning Roles to Users
+
+```csharp
+// Add role to user
+await userManager.AddToRoleAsync(user, "Admin");
+
+// Remove role from user
+await userManager.RemoveFromRoleAsync(user, "Admin");
+
+// Check if user is in role
+var isAdmin = await userManager.IsInRoleAsync(user, "Admin");
+
+// Get all roles for user
+var roles = await userManager.GetRolesAsync(user);
+```
+
+## Claims-Based Authorization
+
+AuthScape uses claims for authorization. The `SignedInUser` object includes:
+
+```csharp
+public class SignedInUser
+{
+    public List<QueryRole> Roles { get; set; }
+    public List<Permission> Permissions { get; set; }
+}
+
+public class QueryRole
+{
+    public long Id { get; set; }
+    public string Name { get; set; }
+}
+```
+
+### MFA Claim
+
+The `AdditionalUserClaimsPrincipalFactory` adds MFA claims:
+
+```csharp
+public class AdditionalUserClaimsPrincipalFactory :
+    UserClaimsPrincipalFactory<AppUser, Role>
+{
+    public override async Task<ClaimsPrincipal> CreateAsync(AppUser user)
+    {
+        var principal = await base.CreateAsync(user);
+        var identity = (ClaimsIdentity)principal.Identity!;
+
+        // Add "amr" (Authentication Method Reference) claim
+        if (user.TwoFactorEnabled)
+        {
+            identity.AddClaim(new Claim("amr", "mfa"));
+        }
+        else
+        {
+            identity.AddClaim(new Claim("amr", "pwd"));
+        }
+
+        return principal;
+    }
+}
+```
+
+## Protecting Controllers
+
+### Require Authentication
+
+```csharp
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class SecureController : ControllerBase
+{
+    // All endpoints require authentication
+}
+```
+
+### Require Specific Role
+
+```csharp
+[Authorize(Roles = "Admin")]
+[HttpGet("admin-only")]
+public IActionResult AdminOnly()
+{
+    return Ok("Admin access granted");
+}
+
+[Authorize(Roles = "Admin,Manager")]
+[HttpGet("admin-or-manager")]
+public IActionResult AdminOrManager()
+{
+    return Ok("Admin or Manager access granted");
+}
+```
+
+### Require MFA
+
+```csharp
+[Authorize(Policy = "TwoFactorEnabled")]
+[HttpGet("mfa-required")]
+public IActionResult MfaRequired()
+{
+    return Ok("MFA verified");
+}
+```
+
+### Check Permissions Programmatically
+
+```csharp
+[HttpGet("conditional")]
+public async Task<IActionResult> ConditionalAccess()
+{
+    var user = _userManagementService.GetSignedInUser();
+
+    // Check specific permission
+    var canEdit = user.Permissions.Any(p => p.Name == "CanEditUsers");
+    if (!canEdit)
+    {
+        return Forbid();
+    }
+
+    // Check specific role
+    var isAdmin = user.Roles.Any(r => r.Name == "Admin");
+
+    return Ok(new { canEdit, isAdmin });
+}
+```
+
+## Frontend Role/Permission Checks
+
+```javascript
+import { apiService } from 'authscape';
+
+// Get current user with roles/permissions
+const user = await apiService().get('/UserManagement/Get');
+
+// Check role
+const isAdmin = user.roles.some(r => r.name === 'Admin');
+
+// Check permission
+const canDelete = user.permissions.some(p => p.name === 'CanDeleteUsers');
+
+// Conditional rendering
+{isAdmin && <AdminPanel />}
+{canDelete && <DeleteButton />}
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/UserManagement/GetRoles` | GET | List all roles |
+| `/api/UserManagement/GetPermissions` | GET | List all permissions |
+| `/api/Roles/Create` | POST | Create new role |
+| `/api/Roles/Update` | PUT | Update role name |
+| `/api/Roles/Delete` | DELETE | Delete role |
+| `/api/Permissions/Create` | POST | Create permission |
+| `/api/Permissions/Update` | PUT | Update permission |
+| `/api/Permissions/Delete` | DELETE | Delete permission |
+
+## Best Practices
+
+1. **Use Roles for broad access** - Admin, Manager, User
+2. **Use Permissions for granular control** - CanEditUsers, CanViewReports
+3. **Never delete roles with users** - Archive users first
+4. **Check permissions server-side** - Don't rely solely on frontend checks
+5. **Use claims for MFA** - Require MFA for sensitive operations
+
+## Next Steps
+
+- [Custom Fields](/docs/admin/custom-fields) - Extend user profiles
+- [Invitations](/docs/admin/invitations) - Email-based user onboarding

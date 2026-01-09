@@ -1,0 +1,142 @@
+---
+title: Installation
+description: Complete installation guide for AuthScape.
+---
+
+# Installation
+
+This guide covers the complete installation process for AuthScape.
+
+## System Requirements
+
+### Backend
+- .NET 8 SDK or later
+- Visual Studio 2022 or VS Code with C# extension
+
+### Frontend
+- Node.js 18+
+- npm or yarn
+
+### Database (one of)
+- SQL Server 2019+
+- PostgreSQL 14+
+- SQLite 3
+
+## Step 1: Clone Repository
+
+```bash
+git clone https://github.com/authscape/authscape.git
+cd authscape
+```
+
+## Step 2: Install Backend Dependencies
+
+```bash
+cd AuthScape.API
+dotnet restore
+```
+
+## Step 3: Configure Database
+
+Create `appsettings.Development.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Your-Connection-String-Here"
+  },
+  "AppSettings": {
+    "BaseUri": "https://localhost:5001"
+  }
+}
+```
+
+### SQL Server
+```
+Server=localhost;Database=AuthScape;Trusted_Connection=True;TrustServerCertificate=True
+```
+
+### PostgreSQL
+```
+Host=localhost;Database=authscape;Username=postgres;Password=yourpassword
+```
+
+### SQLite
+```
+Data Source=authscape.db
+```
+
+## Step 4: Run Migrations
+
+```bash
+dotnet ef database update
+```
+
+## Step 5: Install Frontend Dependencies
+
+```bash
+cd ../AuthScape.NextJS
+npm install
+```
+
+## Step 6: Configure Frontend
+
+Create `.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=https://localhost:5001
+NEXT_PUBLIC_CLIENT_ID=your-client-id
+```
+
+## Step 7: Generate Certificates
+
+For development HTTPS:
+
+```bash
+dotnet dev-certs https --trust
+```
+
+## Step 8: Start Services
+
+Terminal 1 - Backend:
+```bash
+cd AuthScape.API
+dotnet run
+```
+
+Terminal 2 - Frontend:
+```bash
+cd AuthScape.NextJS
+npm run dev
+```
+
+## Verify Installation
+
+1. Open https://localhost:5001/swagger - API documentation
+2. Open http://localhost:3000 - Frontend application
+3. Try registering a new user
+
+## Troubleshooting
+
+### Port Already in Use
+```bash
+netstat -ano | findstr :5001
+taskkill /PID <pid> /F
+```
+
+### Database Connection Failed
+- Verify connection string
+- Check database server is running
+- Ensure database exists
+
+### Certificate Issues
+```bash
+dotnet dev-certs https --clean
+dotnet dev-certs https --trust
+```
+
+## Next Steps
+
+- [Configuration Overview](/docs/configuration/overview)
+- [Database Setup](/docs/database/overview)
+- [Authentication Setup](/docs/authentication/overview)

@@ -1,0 +1,238 @@
+---
+title: EditableDatagrid
+description: Server-side paginated data grid with inline editing capabilities.
+---
+
+# EditableDatagrid
+
+The EditableDatagrid component provides server-side pagination and inline cell editing using Material-UI DataGrid.
+
+## Features
+
+- Server-side pagination
+- Inline cell editing
+- Column configuration
+- Custom row height
+- Cell click handling
+- Loading states
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `url` | string | required | API endpoint for data |
+| `eRows` | array | null | Local row data (if url is null) |
+| `columns` | array | required | Column definitions |
+| `isCellEditable` | function | - | Determine if cell is editable |
+| `onCellClick` | function | - | Cell click callback |
+| `onCellEdited` | function | - | Cell edit callback |
+| `params` | object | {} | Additional API parameters |
+| `sx` | object | {} | Custom MUI styles |
+| `height` | string | "50vh" | Grid height |
+| `pageSize` | number | 50 | Initial page size |
+| `rowsPerPage` | array | [25,50,100] | Page size options |
+| `rowHeight` | number | 70 | Row height in pixels |
+| `onRowClick` | function | - | Row click callback |
+
+## Basic Usage
+
+```jsx
+import { EditableDatagrid } from 'authscape/components';
+
+const columns = [
+  { field: 'id', headerName: 'ID', width: 90 },
+  { field: 'name', headerName: 'Name', width: 200, editable: true },
+  { field: 'email', headerName: 'Email', width: 250 },
+  { field: 'status', headerName: 'Status', width: 120 }
+];
+
+export default function UserList() {
+  return (
+    <EditableDatagrid
+      url="/api/Users/GetAll"
+      columns={columns}
+      height="60vh"
+    />
+  );
+}
+```
+
+## With Editing
+
+```jsx
+import { EditableDatagrid } from 'authscape/components';
+import { apiService } from 'authscape';
+
+const columns = [
+  { field: 'id', headerName: 'ID', width: 90 },
+  { field: 'name', headerName: 'Name', width: 200, editable: true },
+  { field: 'price', headerName: 'Price', width: 120, editable: true, type: 'number' },
+  { field: 'quantity', headerName: 'Qty', width: 100, editable: true, type: 'number' }
+];
+
+export default function ProductList() {
+  const handleCellEdited = async (cell) => {
+    await apiService().post('/Products/UpdateField', {
+      id: cell.id,
+      field: cell.field,
+      value: cell.value
+    });
+  };
+
+  const isCellEditable = (params) => {
+    // Disable editing for certain rows
+    return params.row.status !== 'locked';
+  };
+
+  return (
+    <EditableDatagrid
+      url="/api/Products/GetAll"
+      columns={columns}
+      onCellEdited={handleCellEdited}
+      isCellEditable={isCellEditable}
+    />
+  );
+}
+```
+
+## With Custom Parameters
+
+```jsx
+<EditableDatagrid
+  url="/api/Documents/GetByType"
+  params={{
+    documentType: 'invoice',
+    companyId: companyId,
+    status: 'active'
+  }}
+  columns={documentColumns}
+/>
+```
+
+## With Row Click
+
+```jsx
+export default function OrderList() {
+  const handleRowClick = (params) => {
+    router.push(`/orders/${params.row.id}`);
+  };
+
+  return (
+    <EditableDatagrid
+      url="/api/Orders/GetAll"
+      columns={orderColumns}
+      onRowClick={handleRowClick}
+    />
+  );
+}
+```
+
+## Column Types
+
+```jsx
+const columns = [
+  // Text column
+  { field: 'name', headerName: 'Name', width: 200 },
+
+  // Number column
+  { field: 'price', headerName: 'Price', width: 120, type: 'number' },
+
+  // Date column
+  { field: 'createdAt', headerName: 'Created', width: 150, type: 'date' },
+
+  // Boolean column
+  { field: 'active', headerName: 'Active', width: 100, type: 'boolean' },
+
+  // Custom render
+  {
+    field: 'status',
+    headerName: 'Status',
+    width: 120,
+    renderCell: (params) => (
+      <Chip
+        label={params.value}
+        color={params.value === 'active' ? 'success' : 'default'}
+      />
+    )
+  },
+
+  // Actions column
+  {
+    field: 'actions',
+    headerName: 'Actions',
+    width: 150,
+    renderCell: (params) => (
+      <>
+        <IconButton onClick={() => handleEdit(params.row)}>
+          <EditIcon />
+        </IconButton>
+        <IconButton onClick={() => handleDelete(params.row.id)}>
+          <DeleteIcon />
+        </IconButton>
+      </>
+    )
+  }
+];
+```
+
+## Backend API Format
+
+The API should return paginated data:
+
+```csharp
+[HttpPost("GetAll")]
+public async Task<IActionResult> GetAll([FromBody] GridParams param)
+{
+    var query = _context.Products.AsQueryable();
+
+    var totalCount = await query.CountAsync();
+
+    var data = await query
+        .Skip(param.Offset)
+        .Take(param.Length)
+        .ToListAsync();
+
+    return Ok(new
+    {
+        data,
+        totalCount
+    });
+}
+
+public class GridParams
+{
+    public int Offset { get; set; }
+    public int Length { get; set; }
+    // Additional filter params
+}
+```
+
+## Refreshing Data
+
+```jsx
+import { useState } from 'react';
+
+export default function RefreshableGrid() {
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+  };
+
+  return (
+    <>
+      <Button onClick={handleRefresh}>Refresh</Button>
+      <EditableDatagrid
+        key={refreshKey}
+        url="/api/Data/GetAll"
+        columns={columns}
+      />
+    </>
+  );
+}
+```
+
+## Next Steps
+
+- [Datatable](/docs/components/datatable) - Alternative data table
+- [DocumentManager](/docs/components/document-manager) - File management grid

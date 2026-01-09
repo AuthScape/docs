@@ -1,0 +1,290 @@
+---
+title: Email - SendGrid
+description: Configure and use SendGrid for transactional email in AuthScape.
+---
+
+# Email - SendGrid
+
+AuthScape includes a SendGrid email provider for sending transactional emails.
+
+## Configuration
+
+Add SendGrid configuration to `appsettings.json`:
+
+```json
+{
+  "Email": {
+    "DefaultFromEmail": "noreply@yourapp.com",
+    "DefaultFromName": "Your App",
+    "DefaultProvider": "SendGrid",
+    "Providers": {
+      "SendGrid": {
+        "Enabled": true,
+        "ApiKey": "SG.your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+## Service Registration
+
+Register the email service in `Startup.cs`:
+
+```csharp
+services.AddEmailService(Configuration, "Email");
+```
+
+## Implementation
+
+The `SendGridEmailProvider` uses the official SendGrid NuGet package:
+
+```csharp
+public class SendGridEmailProvider : IEmailProvider
+{
+    private readonly SendGridConfig _config;
+    private readonly ILogger<SendGridEmailProvider> _logger;
+    private readonly SendGridClient _client;
+
+    public string ProviderName => "SendGrid";
+
+    public SendGridEmailProvider(
+        IOptions<EmailConfiguration> emailConfig,
+        ILogger<SendGridEmailProvider> logger)
+    {
+        var config = emailConfig.Value;
+        if (config.Providers.TryGetValue("SendGrid", out var providerConfig)
+            && providerConfig is SendGridConfig sendGridConfig)
+        {
+            _config = sendGridConfig;
+        }
+
+        if (!string.IsNullOrEmpty(_config.ApiKey))
+        {
+            _client = new SendGridClient(_config.ApiKey);
+        }
+    }
+
+    public bool IsConfigured()
+    {
+        return _config?.Enabled == true && !string.IsNullOrEmpty(_config?.ApiKey);
+    }
+
+    public async Task<IEmailResponse> SendEmailAsync(
+        IEmailMessage message,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured())
+        {
+            return EmailResponse.Failure(ProviderName, "SendGrid is not configured.");
+        }
+
+        var from = new EmailAddress(message.FromEmail, message.FromName);
+        var msg = new SendGridMessage();
+
+        msg.SetFrom(from);
+        msg.Subject = message.Subject;
+        msg.PlainTextContent = message.TextContent;
+        msg.HtmlContent = message.HtmlContent;
+
+        // Add recipients
+        foreach (var recipient in message.To)
+        {
+            msg.AddTo(new EmailAddress(recipient.Email, recipient.Name));
+        }
+
+        // Add CC recipients
+        foreach (var cc in message.Cc ?? Enumerable.Empty<EmailRecipient>())
+        {
+            msg.AddCc(new EmailAddress(cc.Email, cc.Name));
+        }
+
+        // Add BCC recipients
+        foreach (var bcc in message.Bcc ?? Enumerable.Empty<EmailRecipient>())
+        {
+            msg.AddBcc(new EmailAddress(bcc.Email, bcc.Name));
+        }
+
+        // Add reply-to
+        if (!string.IsNullOrEmpty(message.ReplyToEmail))
+        {
+            msg.SetReplyTo(new EmailAddress(message.ReplyToEmail, message.ReplyToName));
+        }
+
+        // Add attachments
+        foreach (var attachment in message.Attachments ?? Enumerable.Empty<EmailAttachment>())
+        {
+            var base64Content = Convert.ToBase64String(attachment.Content);
+            msg.AddAttachment(attachment.FileName, base64Content, attachment.ContentType);
+        }
+
+        // Add categories (tags)
+        if (message.Tags?.Any() == true)
+        {
+            msg.AddCategories(message.Tags);
+        }
+
+        var response = await _client.SendEmailAsync(msg, cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var messageId = response.Headers.GetValues("X-Message-Id")?.FirstOrDefault();
+            return EmailResponse.Success(ProviderName, messageId, (int)response.StatusCode);
+        }
+        else
+        {
+            var errorBody = await response.Body.ReadAsStringAsync();
+            return EmailResponse.Failure(ProviderName, errorBody, (int)response.StatusCode);
+        }
+    }
+}
+```
+
+## Usage Examples
+
+### Basic Email
+
+```csharp
+public class NotificationService
+{
+    private readonly IEmailService _emailService;
+
+    public async Task SendWelcomeEmail(string email, string name)
+    {
+        var message = new EmailMessage
+        {
+            To = new[] { new EmailRecipient(email, name) },
+            Subject = "Welcome to Our Platform",
+            HtmlContent = $@"
+                <h1>Welcome, {name}!</h1>
+                <p>Thank you for signing up. We're excited to have you!</p>
+            "
+        };
+
+        await _emailService.SendEmailAsync(message);
+    }
+}
+```
+
+### Email with Attachments
+
+```csharp
+public async Task SendInvoiceEmail(string email, string name, byte[] pdfContent)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(email, name) },
+        Subject = "Your Invoice",
+        HtmlContent = "<p>Please find your invoice attached.</p>",
+        Attachments = new[]
+        {
+            new EmailAttachment
+            {
+                FileName = "invoice.pdf",
+                Content = pdfContent,
+                ContentType = "application/pdf"
+            }
+        }
+    };
+
+    await _emailService.SendEmailAsync(message);
+}
+```
+
+### Email with CC and BCC
+
+```csharp
+public async Task SendTeamNotification(string primaryEmail, string[] ccEmails, string subject, string body)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(primaryEmail) },
+        Cc = ccEmails.Select(e => new EmailRecipient(e)).ToList(),
+        Subject = subject,
+        HtmlContent = body
+    };
+
+    await _emailService.SendEmailAsync(message);
+}
+```
+
+### Email with Tags/Categories
+
+```csharp
+public async Task SendMarketingEmail(string email, string name)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(email, name) },
+        Subject = "Special Offer Inside!",
+        HtmlContent = "<p>Check out our latest deals...</p>",
+        Tags = new[] { "marketing", "newsletter", "promo" }
+    };
+
+    await _emailService.SendEmailAsync(message);
+}
+```
+
+## Frontend API Call
+
+```javascript
+import { apiService } from 'authscape';
+
+// Send email via backend API
+await apiService().post('/Notifications/Send', {
+  email: 'user@example.com',
+  name: 'John Doe',
+  subject: 'Hello!',
+  body: '<p>This is a test email.</p>'
+});
+```
+
+## SendGrid Dashboard Features
+
+With SendGrid, you get access to:
+
+- **Email Activity** - Track sent, delivered, opened, clicked
+- **Analytics** - Engagement metrics and reports
+- **Templates** - Dynamic templates with variables
+- **Suppressions** - Manage bounces and unsubscribes
+- **Webhooks** - Real-time event notifications
+
+## Error Handling
+
+```csharp
+var result = await _emailService.SendEmailAsync(message);
+
+if (result.Success)
+{
+    _logger.LogInformation("Email sent. MessageId: {MessageId}", result.MessageId);
+}
+else
+{
+    _logger.LogError("Email failed. Provider: {Provider}, Error: {Error}, StatusCode: {StatusCode}",
+        result.ProviderName,
+        result.ErrorMessage,
+        result.StatusCode);
+}
+```
+
+## Best Practices
+
+1. **Verify your domain** - Configure SPF, DKIM, and DMARC
+2. **Use API keys with minimal scope** - Only grant necessary permissions
+3. **Handle bounces** - Set up webhooks for bounce notifications
+4. **Use templates** - For consistent email styling
+5. **Monitor deliverability** - Check SendGrid analytics regularly
+
+## Environment Variables
+
+For production, use environment variables instead of appsettings:
+
+```bash
+Email__Providers__SendGrid__ApiKey=SG.your_api_key
+```
+
+## Next Steps
+
+- [Email - Mailgun](/docs/services/email-mailgun) - Alternative email provider
+- [Email - SMTP](/docs/services/email-smtp) - Generic SMTP support
+- [Invitations](/docs/admin/invitations) - User invitation emails

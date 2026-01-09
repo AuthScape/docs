@@ -1,0 +1,335 @@
+---
+title: Claims & Identity
+description: Understanding JWT token claims and identity structure in AuthScape.
+---
+
+# Claims & Identity
+
+AuthScape uses JWT tokens with custom claims to provide rich identity information for authentication and authorization.
+
+## Token Structure
+
+When a user authenticates, they receive three tokens:
+
+| Token | Purpose | Lifetime |
+|-------|---------|----------|
+| Access Token | API authentication | 1 hour |
+| Refresh Token | Get new access tokens | Long-lived |
+| ID Token | Identity claims (OpenID Connect) | With access token |
+
+## Standard Claims
+
+AuthScape tokens include standard OpenID Connect claims:
+
+```json
+{
+  "sub": "12345",
+  "iss": "https://auth.yourapp.com",
+  "aud": "your-client-id",
+  "exp": 1704067200,
+  "iat": 1704063600,
+  "email": "user@example.com",
+  "email_verified": true,
+  "given_name": "John",
+  "family_name": "Doe"
+}
+```
+
+## Custom AuthScape Claims
+
+AuthScape adds custom claims for multi-tenant applications:
+
+```json
+{
+  "sub": "12345",
+  "username": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "companyId": "1",
+  "companyName": "Acme Corp",
+  "locationId": "1",
+  "locationName": "Headquarters",
+  "userPermissions": "[{\"Id\":\"guid-1\",\"Name\":\"CanEdit\"}]",
+  "usersRoles": "[{\"Id\":1,\"Name\":\"Admin\"}]"
+}
+```
+
+## Claims Mapping
+
+AuthScape maps Identity claims to OpenIddict claims:
+
+```csharp
+services.Configure<IdentityOptions>(options =>
+{
+    options.ClaimsIdentity.UserNameClaimType = Claims.Name;
+    options.ClaimsIdentity.UserIdClaimType = Claims.Subject;
+    options.ClaimsIdentity.RoleClaimType = Claims.Role;
+});
+```
+
+## Extracting Claims (Backend)
+
+### Using IUserManagementService
+
+The recommended way to get user info:
+
+```csharp
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class MyController : ControllerBase
+{
+    private readonly IUserManagementService _userManagementService;
+
+    [HttpGet]
+    public IActionResult GetData()
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        // Access all claims via SignedInUser
+        var userId = user.Id;
+        var email = user.Email;
+        var companyId = user.CompanyId;
+        var roles = user.Roles;
+        var permissions = user.Permissions;
+
+        return Ok(new { userId, companyId });
+    }
+}
+```
+
+### Manual Claim Extraction
+
+```csharp
+[HttpGet]
+public IActionResult GetClaims()
+{
+    var claims = User.Claims.ToList();
+
+    // Get specific claims
+    var userId = User.FindFirst(Claims.Subject)?.Value;
+    var email = User.FindFirst(Claims.Email)?.Value;
+    var firstName = User.FindFirst("firstName")?.Value;
+    var companyId = User.FindFirst("companyId")?.Value;
+
+    // Parse JSON claims
+    var rolesJson = User.FindFirst("usersRoles")?.Value;
+    var roles = rolesJson != null
+        ? JsonSerializer.Deserialize<List<QueryRole>>(rolesJson)
+        : new List<QueryRole>();
+
+    return Ok(new { userId, email, roles });
+}
+```
+
+## Extracting Claims (Frontend)
+
+### Decoding the JWT
+
+```javascript
+function parseJwt(token) {
+  const base64Url = token.split('.')[1];
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const jsonPayload = decodeURIComponent(
+    atob(base64)
+      .split('')
+      .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+      .join('')
+  );
+  return JSON.parse(jsonPayload);
+}
+
+// Usage
+const token = Cookies.get('access_token');
+const claims = parseJwt(token);
+
+console.log(claims.sub);        // User ID
+console.log(claims.firstName);  // First name
+console.log(claims.companyId);  // Company ID
+```
+
+### Getting User from API
+
+The better approach is to call the API:
+
+```javascript
+import { apiService } from 'authscape';
+
+const user = await apiService().get('/UserManagement/Get');
+
+// User object matches SignedInUser
+console.log(user.id);
+console.log(user.email);
+console.log(user.firstName);
+console.log(user.lastName);
+console.log(user.companyId);
+console.log(user.companyName);
+console.log(user.roles);       // Array of { id, name }
+console.log(user.permissions); // Array of { id, name }
+```
+
+## MFA Claims
+
+The `amr` (Authentication Method Reference) claim indicates authentication method:
+
+```csharp
+public class AdditionalUserClaimsPrincipalFactory :
+    UserClaimsPrincipalFactory<AppUser, Role>
+{
+    public override async Task<ClaimsPrincipal> CreateAsync(AppUser user)
+    {
+        var principal = await base.CreateAsync(user);
+        var identity = (ClaimsIdentity)principal.Identity!;
+
+        if (user.TwoFactorEnabled)
+        {
+            identity.AddClaim(new Claim("amr", "mfa"));
+        }
+        else
+        {
+            identity.AddClaim(new Claim("amr", "pwd"));
+        }
+
+        return principal;
+    }
+}
+```
+
+### Checking MFA Status
+
+```csharp
+// Require MFA for endpoint
+[Authorize(Policy = "TwoFactorEnabled")]
+[HttpGet("secure")]
+public IActionResult SecureEndpoint()
+{
+    return Ok("MFA verified");
+}
+
+// Check MFA programmatically
+var amr = User.FindFirst("amr")?.Value;
+var isMfa = amr == "mfa";
+```
+
+## Scopes and Claims
+
+Different scopes provide different claims:
+
+| Scope | Claims |
+|-------|--------|
+| `openid` | `sub` (required) |
+| `email` | `email`, `email_verified` |
+| `profile` | `given_name`, `family_name` |
+| `roles` | `role` (array) |
+| `offline_access` | Enables refresh tokens |
+
+## Custom Claims Provider
+
+Add additional claims during token generation:
+
+```csharp
+public class CustomClaimsProvider : IClaimsProvider
+{
+    private readonly DatabaseContext _context;
+
+    public async Task<IEnumerable<Claim>> GetClaimsAsync(AppUser user)
+    {
+        var claims = new List<Claim>();
+
+        // Add custom claims
+        claims.Add(new Claim("companyId", user.CompanyId?.ToString() ?? ""));
+        claims.Add(new Claim("locationId", user.LocationId?.ToString() ?? ""));
+
+        // Add company name
+        if (user.CompanyId.HasValue)
+        {
+            var company = await _context.Companies.FindAsync(user.CompanyId);
+            claims.Add(new Claim("companyName", company?.Name ?? ""));
+        }
+
+        // Add serialized roles
+        var roles = await _userManager.GetRolesAsync(user);
+        var roleObjects = roles.Select((r, i) => new { Id = i, Name = r });
+        claims.Add(new Claim("usersRoles", JsonSerializer.Serialize(roleObjects)));
+
+        // Add serialized permissions
+        var permissions = await GetUserPermissions(user.Id);
+        claims.Add(new Claim("userPermissions", JsonSerializer.Serialize(permissions)));
+
+        return claims;
+    }
+}
+```
+
+## UserInfo Endpoint
+
+The `/connect/userinfo` endpoint returns claims for authenticated users:
+
+```csharp
+[Authorize(AuthenticationSchemes = OpenIddictServerAspNetCoreDefaults.AuthenticationScheme)]
+[HttpGet("~/connect/userinfo"), HttpPost("~/connect/userinfo")]
+public async Task<IActionResult> Userinfo()
+{
+    var user = await _userManager.FindByIdAsync(
+        User.GetClaim(Claims.Subject)
+    );
+
+    if (user is null)
+        return Challenge();
+
+    var claims = new Dictionary<string, object>
+    {
+        [Claims.Subject] = user.Id.ToString()
+    };
+
+    if (User.HasScope(Scopes.Email))
+    {
+        claims[Claims.Email] = user.Email!;
+        claims[Claims.EmailVerified] = user.EmailConfirmed;
+    }
+
+    if (User.HasScope(Scopes.Profile))
+    {
+        claims[Claims.GivenName] = user.FirstName;
+        claims[Claims.FamilyName] = user.LastName;
+    }
+
+    if (User.HasScope(Scopes.Roles))
+    {
+        claims[Claims.Role] = await _userManager.GetRolesAsync(user);
+    }
+
+    return Ok(claims);
+}
+```
+
+## Token Introspection
+
+Validate tokens programmatically:
+
+```csharp
+// POST /connect/introspect
+// Body: token={access_token}&client_id={client_id}
+
+// Response:
+{
+  "active": true,
+  "sub": "12345",
+  "client_id": "your-client-id",
+  "username": "user@example.com",
+  "scope": "email openid profile api1",
+  "exp": 1704067200
+}
+```
+
+## Best Practices
+
+1. **Don't store sensitive data in claims** - Claims are visible in decoded JWTs
+2. **Keep tokens short-lived** - 1 hour is recommended for access tokens
+3. **Use refresh tokens** - For seamless user experience
+4. **Validate claims server-side** - Don't trust client-side claim checks alone
+5. **Use SignedInUser** - Prefer `IUserManagementService.GetSignedInUser()` over manual extraction
+
+## Next Steps
+
+- [Authentication Flows](/docs/user-profile/authentication-flows) - Login/logout flows
+- [Roles & Permissions](/docs/admin/roles-permissions) - RBAC with claims
+- [IDP Admin Overview](/docs/admin/overview) - OpenIddict configuration

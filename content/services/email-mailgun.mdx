@@ -1,0 +1,333 @@
+---
+title: Email - Mailgun
+description: Configure and use Mailgun for transactional email in AuthScape.
+---
+
+# Email - Mailgun
+
+AuthScape includes a Mailgun email provider for sending transactional emails via the Mailgun API.
+
+## Configuration
+
+Add Mailgun configuration to `appsettings.json`:
+
+```json
+{
+  "Email": {
+    "DefaultFromEmail": "noreply@yourapp.com",
+    "DefaultFromName": "Your App",
+    "DefaultProvider": "Mailgun",
+    "Providers": {
+      "Mailgun": {
+        "Enabled": true,
+        "ApiKey": "your-mailgun-api-key",
+        "Settings": {
+          "Domain": "mail.yourapp.com",
+          "BaseUrl": "https://api.mailgun.net/v3"
+        }
+      }
+    }
+  }
+}
+```
+
+## Required Settings
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| `ApiKey` | Mailgun API key | `key-xxx` |
+| `Domain` | Your Mailgun domain | `mail.yourapp.com` |
+| `BaseUrl` | Mailgun API URL | `https://api.mailgun.net/v3` (US) or `https://api.eu.mailgun.net/v3` (EU) |
+
+## Implementation
+
+The `MailgunEmailProvider` uses HTTP requests to the Mailgun API:
+
+```csharp
+public class MailgunEmailProvider : IEmailProvider
+{
+    private readonly MailgunConfig _config;
+    private readonly ILogger<MailgunEmailProvider> _logger;
+    private readonly HttpClient _httpClient;
+
+    public string ProviderName => "Mailgun";
+
+    public MailgunEmailProvider(
+        IOptions<EmailConfiguration> emailConfig,
+        ILogger<MailgunEmailProvider> logger,
+        IHttpClientFactory httpClientFactory)
+    {
+        var config = emailConfig.Value;
+        if (config.Providers.TryGetValue("Mailgun", out var providerConfig)
+            && providerConfig is MailgunConfig mailgunConfig)
+        {
+            _config = mailgunConfig;
+        }
+        else if (config.Providers.TryGetValue("Mailgun", out var baseConfig))
+        {
+            _config = new MailgunConfig
+            {
+                Enabled = baseConfig.Enabled,
+                ApiKey = baseConfig.ApiKey,
+                Domain = baseConfig.Settings.GetValueOrDefault("Domain", ""),
+                BaseUrl = baseConfig.Settings.GetValueOrDefault("BaseUrl", "https://api.mailgun.net/v3")
+            };
+        }
+
+        _httpClient = httpClientFactory?.CreateClient() ?? new HttpClient();
+    }
+
+    public bool IsConfigured()
+    {
+        return _config?.Enabled == true &&
+               !string.IsNullOrEmpty(_config?.ApiKey) &&
+               !string.IsNullOrEmpty(_config?.Domain);
+    }
+
+    public async Task<IEmailResponse> SendEmailAsync(
+        IEmailMessage message,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured())
+        {
+            return EmailResponse.Failure(ProviderName,
+                "Mailgun is not configured. Please provide an API key and domain.");
+        }
+
+        var formContent = new List<KeyValuePair<string, string>>();
+
+        // From
+        formContent.Add(new KeyValuePair<string, string>("from",
+            $"{message.FromName} <{message.FromEmail}>"));
+
+        // To
+        foreach (var to in message.To)
+        {
+            formContent.Add(new KeyValuePair<string, string>("to",
+                string.IsNullOrEmpty(to.Name) ? to.Email : $"{to.Name} <{to.Email}>"));
+        }
+
+        // Cc
+        foreach (var cc in message.Cc ?? Enumerable.Empty<EmailRecipient>())
+        {
+            formContent.Add(new KeyValuePair<string, string>("cc",
+                string.IsNullOrEmpty(cc.Name) ? cc.Email : $"{cc.Name} <{cc.Email}>"));
+        }
+
+        // Bcc
+        foreach (var bcc in message.Bcc ?? Enumerable.Empty<EmailRecipient>())
+        {
+            formContent.Add(new KeyValuePair<string, string>("bcc",
+                string.IsNullOrEmpty(bcc.Name) ? bcc.Email : $"{bcc.Name} <{bcc.Email}>"));
+        }
+
+        // Subject
+        formContent.Add(new KeyValuePair<string, string>("subject", message.Subject));
+
+        // Content
+        if (!string.IsNullOrEmpty(message.TextContent))
+        {
+            formContent.Add(new KeyValuePair<string, string>("text", message.TextContent));
+        }
+        if (!string.IsNullOrEmpty(message.HtmlContent))
+        {
+            formContent.Add(new KeyValuePair<string, string>("html", message.HtmlContent));
+        }
+
+        // Reply-To
+        if (!string.IsNullOrEmpty(message.ReplyToEmail))
+        {
+            formContent.Add(new KeyValuePair<string, string>("h:Reply-To",
+                string.IsNullOrEmpty(message.ReplyToName)
+                    ? message.ReplyToEmail
+                    : $"{message.ReplyToName} <{message.ReplyToEmail}>"));
+        }
+
+        // Tags
+        foreach (var tag in message.Tags ?? Enumerable.Empty<string>())
+        {
+            formContent.Add(new KeyValuePair<string, string>("o:tag", tag));
+        }
+
+        // Create request
+        var request = new HttpRequestMessage(HttpMethod.Post,
+            $"{_config.BaseUrl}/{_config.Domain}/messages");
+        request.Content = new FormUrlEncodedContent(formContent);
+
+        // Add Basic Auth
+        var authToken = Convert.ToBase64String(
+            Encoding.ASCII.GetBytes($"api:{_config.ApiKey}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authToken);
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync();
+
+        if (response.IsSuccessStatusCode)
+        {
+            return EmailResponse.Success(ProviderName, null, (int)response.StatusCode);
+        }
+        else
+        {
+            return EmailResponse.Failure(ProviderName, responseBody, (int)response.StatusCode);
+        }
+    }
+}
+```
+
+## Usage Examples
+
+### Basic Email
+
+```csharp
+public class NotificationService
+{
+    private readonly IEmailService _emailService;
+
+    public async Task SendPasswordResetEmail(string email, string resetLink)
+    {
+        var message = new EmailMessage
+        {
+            To = new[] { new EmailRecipient(email) },
+            Subject = "Reset Your Password",
+            HtmlContent = $@"
+                <h2>Password Reset Request</h2>
+                <p>Click the link below to reset your password:</p>
+                <p><a href=""{resetLink}"">Reset Password</a></p>
+                <p>This link expires in 24 hours.</p>
+            "
+        };
+
+        await _emailService.SendEmailAsync(message, "Mailgun");
+    }
+}
+```
+
+### Email with Custom Headers
+
+```csharp
+public async Task SendTrackableEmail(string email, string campaignId)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(email) },
+        Subject = "Your Weekly Update",
+        HtmlContent = "<p>Here's what's new this week...</p>",
+        Headers = new Dictionary<string, string>
+        {
+            ["X-Campaign-Id"] = campaignId,
+            ["X-Mailgun-Track"] = "yes",
+            ["X-Mailgun-Track-Clicks"] = "yes",
+            ["X-Mailgun-Track-Opens"] = "yes"
+        }
+    };
+
+    await _emailService.SendEmailAsync(message, "Mailgun");
+}
+```
+
+### Email with Tags
+
+```csharp
+public async Task SendTaggedEmail(string email, string[] tags)
+{
+    var message = new EmailMessage
+    {
+        To = new[] { new EmailRecipient(email) },
+        Subject = "Welcome!",
+        HtmlContent = "<p>Welcome to our platform!</p>",
+        Tags = tags  // e.g., ["welcome", "onboarding"]
+    };
+
+    await _emailService.SendEmailAsync(message);
+}
+```
+
+## EU Region Configuration
+
+For EU-based Mailgun accounts:
+
+```json
+{
+  "Email": {
+    "Providers": {
+      "Mailgun": {
+        "Enabled": true,
+        "ApiKey": "your-api-key",
+        "Settings": {
+          "Domain": "mail.yourapp.eu",
+          "BaseUrl": "https://api.eu.mailgun.net/v3"
+        }
+      }
+    }
+  }
+}
+```
+
+## Webhook Configuration
+
+Configure Mailgun webhooks for delivery tracking:
+
+```csharp
+[HttpPost("mailgun-webhook")]
+public async Task<IActionResult> MailgunWebhook([FromBody] MailgunEvent webhookEvent)
+{
+    switch (webhookEvent.Event)
+    {
+        case "delivered":
+            await HandleDelivered(webhookEvent);
+            break;
+        case "bounced":
+            await HandleBounce(webhookEvent);
+            break;
+        case "complained":
+            await HandleComplaint(webhookEvent);
+            break;
+    }
+
+    return Ok();
+}
+```
+
+## Error Handling
+
+```csharp
+var result = await _emailService.SendEmailAsync(message, "Mailgun");
+
+if (!result.Success)
+{
+    if (result.StatusCode == 401)
+    {
+        _logger.LogError("Mailgun authentication failed. Check API key.");
+    }
+    else if (result.StatusCode == 400)
+    {
+        _logger.LogError("Mailgun bad request: {Error}", result.ErrorMessage);
+    }
+    else
+    {
+        _logger.LogError("Mailgun error: {Error}", result.ErrorMessage);
+    }
+}
+```
+
+## Best Practices
+
+1. **Verify your domain** - Add DNS records for SPF and DKIM
+2. **Use the correct region** - US vs EU API endpoints
+3. **Set up webhooks** - For bounce and complaint handling
+4. **Use tags** - For analytics and filtering
+5. **Enable tracking** - For open and click metrics
+
+## Environment Variables
+
+```bash
+Email__Providers__Mailgun__ApiKey=key-xxx
+Email__Providers__Mailgun__Settings__Domain=mail.yourapp.com
+Email__Providers__Mailgun__Settings__BaseUrl=https://api.mailgun.net/v3
+```
+
+## Next Steps
+
+- [Email - SendGrid](/docs/services/email-sendgrid) - Alternative email provider
+- [Email - SMTP](/docs/services/email-smtp) - Generic SMTP support
+- [Third-Party Services](/docs/services/overview) - All integrations

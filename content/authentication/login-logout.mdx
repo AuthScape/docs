@@ -1,0 +1,150 @@
+---
+title: Login & Logout
+description: Implement user login and logout in AuthScape.
+---
+
+# Login & Logout
+
+AuthScape provides frontend authentication helpers through the `authService`.
+
+## Frontend Login
+
+Using `authService()` from the authscape package:
+
+```javascript
+import { authService } from 'authscape';
+
+// Initiate login - redirects to authorization endpoint
+authService().login();
+```
+
+This starts the OAuth Authorization Code flow with PKCE.
+
+## Handle Callback
+
+After successful authentication, handle the callback:
+
+```javascript
+// pages/callback.js
+import { useEffect } from 'react';
+import { authService } from 'authscape';
+import { useRouter } from 'next/router';
+
+export default function Callback() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleCallback = async () => {
+      try {
+        await authService().handleCallback();
+        router.push('/dashboard');
+      } catch (error) {
+        console.error('Login failed:', error);
+        router.push('/login?error=auth_failed');
+      }
+    };
+
+    if (router.query.code) {
+      handleCallback();
+    }
+  }, [router.query.code]);
+
+  return <div>Completing login...</div>;
+}
+```
+
+## Logout
+
+```javascript
+import { authService } from 'authscape';
+
+// Logout - clears tokens and redirects
+authService().logout();
+```
+
+## Check Authentication Status
+
+```javascript
+import { authService } from 'authscape';
+
+// Check if user is logged in
+const isLoggedIn = authService().isAuthenticated();
+
+// Get current user info
+const user = authService().getUser();
+if (user) {
+  console.log('Logged in as:', user.email);
+}
+```
+
+## Protected Routes
+
+Create a higher-order component for protected pages:
+
+```javascript
+import { useEffect, useState } from 'react';
+import { authService } from 'authscape';
+import { useRouter } from 'next/router';
+
+export function withAuth(Component) {
+  return function AuthenticatedComponent(props) {
+    const router = useRouter();
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      if (!authService().isAuthenticated()) {
+        router.push('/login');
+      } else {
+        setLoading(false);
+      }
+    }, []);
+
+    if (loading) {
+      return <div>Loading...</div>;
+    }
+
+    return <Component {...props} />;
+  };
+}
+
+// Usage
+function Dashboard() {
+  return <div>Protected Dashboard</div>;
+}
+
+export default withAuth(Dashboard);
+```
+
+## Login Page Example
+
+```jsx
+import { Button, Box, Typography } from '@mui/material';
+import { authService } from 'authscape';
+
+export default function LoginPage() {
+  const handleLogin = () => {
+    authService().login();
+  };
+
+  return (
+    <Box sx={{ textAlign: 'center', mt: 10 }}>
+      <Typography variant="h4" gutterBottom>
+        Welcome to AuthScape
+      </Typography>
+      <Button
+        variant="contained"
+        size="large"
+        onClick={handleLogin}
+      >
+        Sign In
+      </Button>
+    </Box>
+  );
+}
+```
+
+## Next Steps
+
+- [Authorization Code Flow](/docs/authentication/authorization-code)
+- [Claims Structure](/docs/authentication/claims)
+- [Authentication Flows](/docs/user-profile/authentication-flows)

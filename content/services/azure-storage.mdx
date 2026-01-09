@@ -1,0 +1,280 @@
+---
+title: Azure Storage
+description: Configure Azure Blob Storage for file management in AuthScape.
+---
+
+# Azure Storage
+
+AuthScape uses Azure Blob Storage for file management, including document storage, profile photos, and uploaded files.
+
+## Configuration
+
+Add Azure Storage configuration to `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "Storage": {
+      "AzureConnectionString": "DefaultEndpointsProtocol=https;AccountName=youraccount;AccountKey=xxx;EndpointSuffix=core.windows.net",
+      "BaseUri": "https://youraccount.blob.core.windows.net",
+      "UserProfileContainer": "profiles"
+    }
+  }
+}
+```
+
+## Configuration Properties
+
+| Property | Description | Example |
+|----------|-------------|---------|
+| `AzureConnectionString` | Storage account connection string | `DefaultEndpointsProtocol=https;...` |
+| `BaseUri` | Base URL for blob access | `https://account.blob.core.windows.net` |
+| `UserProfileContainer` | Container for profile photos | `profiles` |
+
+## Service Usage
+
+### Uploading Files
+
+```csharp
+public class FileStorageService
+{
+    private readonly BlobServiceClient _blobServiceClient;
+    private readonly AppSettings _appSettings;
+
+    public FileStorageService(IOptions<AppSettings> appSettings)
+    {
+        _appSettings = appSettings.Value;
+        _blobServiceClient = new BlobServiceClient(_appSettings.Storage.AzureConnectionString);
+    }
+
+    public async Task<string> UploadFileAsync(
+        string containerName,
+        string blobName,
+        Stream content,
+        string contentType)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+
+        var blobClient = containerClient.GetBlobClient(blobName);
+
+        await blobClient.UploadAsync(content, new BlobHttpHeaders
+        {
+            ContentType = contentType
+        });
+
+        return blobClient.Uri.ToString();
+    }
+
+    public async Task<string> UploadProfilePhotoAsync(long userId, Stream photoStream)
+    {
+        var blobName = $"{userId}/profile.jpg";
+        return await UploadFileAsync(
+            _appSettings.Storage.UserProfileContainer,
+            blobName,
+            photoStream,
+            "image/jpeg"
+        );
+    }
+}
+```
+
+### Downloading Files
+
+```csharp
+public async Task<Stream> DownloadFileAsync(string containerName, string blobName)
+{
+    var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+    var blobClient = containerClient.GetBlobClient(blobName);
+
+    var response = await blobClient.DownloadAsync();
+    return response.Value.Content;
+}
+
+public async Task<byte[]> DownloadFileAsBytesAsync(string containerName, string blobName)
+{
+    var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+    var blobClient = containerClient.GetBlobClient(blobName);
+
+    using var memoryStream = new MemoryStream();
+    await blobClient.DownloadToAsync(memoryStream);
+    return memoryStream.ToArray();
+}
+```
+
+### Deleting Files
+
+```csharp
+public async Task DeleteFileAsync(string containerName, string blobName)
+{
+    var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+    var blobClient = containerClient.GetBlobClient(blobName);
+
+    await blobClient.DeleteIfExistsAsync();
+}
+```
+
+### Generating SAS URLs
+
+For temporary access to private blobs:
+
+```csharp
+public string GenerateSasUrl(string containerName, string blobName, TimeSpan expiry)
+{
+    var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+    var blobClient = containerClient.GetBlobClient(blobName);
+
+    var sasBuilder = new BlobSasBuilder
+    {
+        BlobContainerName = containerName,
+        BlobName = blobName,
+        Resource = "b",
+        ExpiresOn = DateTimeOffset.UtcNow.Add(expiry)
+    };
+
+    sasBuilder.SetPermissions(BlobSasPermissions.Read);
+
+    return blobClient.GenerateSasUri(sasBuilder).ToString();
+}
+```
+
+## File Upload Controller
+
+```csharp
+[Route("api/[controller]/[action]")]
+[ApiController]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
+public class FileController : ControllerBase
+{
+    private readonly FileStorageService _storageService;
+    private readonly IUserManagementService _userManagementService;
+
+    [HttpPost]
+    public async Task<IActionResult> Upload(IFormFile file)
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        using var stream = file.OpenReadStream();
+        var url = await _storageService.UploadFileAsync(
+            "documents",
+            $"{user.CompanyId}/{Guid.NewGuid()}/{file.FileName}",
+            stream,
+            file.ContentType
+        );
+
+        return Ok(new { url });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> UploadProfilePhoto(IFormFile file)
+    {
+        var user = _userManagementService.GetSignedInUser();
+
+        using var stream = file.OpenReadStream();
+        var url = await _storageService.UploadProfilePhotoAsync(user.Id, stream);
+
+        return Ok(new { url });
+    }
+}
+```
+
+## Frontend Usage
+
+### Upload with FileUploader Component
+
+```jsx
+import { FileUploader } from 'authscape/components';
+
+export default function DocumentUpload() {
+  return (
+    <FileUploader
+      url="/File/Upload"
+      accept=".pdf,.doc,.docx"
+      multiple={true}
+      onUploadCompleted={(result) => {
+        console.log('Uploaded:', result.url);
+      }}
+    />
+  );
+}
+```
+
+### Upload with apiService
+
+```javascript
+import { apiService } from 'authscape';
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await apiService().post('/File/Upload', formData, {
+    onUploadProgress: (progressEvent) => {
+      const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+      console.log(`Upload progress: ${percent}%`);
+    }
+  });
+
+  return response.url;
+}
+```
+
+## Container Organization
+
+Recommended container structure:
+
+```
+Storage Account
+├── profiles/           (User profile photos)
+│   └── {userId}/
+│       └── profile.jpg
+├── documents/          (Company documents)
+│   └── {companyId}/
+│       └── {documentId}/
+│           └── filename.pdf
+├── uploads/            (Temporary uploads)
+│   └── {date}/
+│       └── {guid}/
+│           └── filename.ext
+└── public/             (Public assets)
+    └── images/
+        └── logo.png
+```
+
+## Access Levels
+
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| Private | No public access | Sensitive documents |
+| Blob | Individual blob access | Profile photos |
+| Container | All blobs in container | Public assets |
+
+```csharp
+// Create private container
+await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
+
+// Create public container
+await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+```
+
+## Best Practices
+
+1. **Use meaningful paths** - `{companyId}/{documentType}/{filename}`
+2. **Generate unique names** - Prevent overwriting with GUIDs
+3. **Set content types** - Enable proper browser handling
+4. **Use SAS tokens** - For secure, temporary access
+5. **Implement soft delete** - Enable blob versioning/soft delete
+6. **Configure CORS** - For direct browser uploads
+
+## Environment Variables
+
+```bash
+AppSettings__Storage__AzureConnectionString=DefaultEndpointsProtocol=https;AccountName=xxx;AccountKey=xxx
+AppSettings__Storage__BaseUri=https://xxx.blob.core.windows.net
+```
+
+## Next Steps
+
+- [Azure OpenAI](/docs/services/azure-openai) - AI services
+- [FileUploader Component](/docs/components/file-uploader) - Upload UI
+- [Document Management](/docs/modules/document-management) - Document system

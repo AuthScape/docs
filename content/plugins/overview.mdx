@@ -1,0 +1,145 @@
+---
+title: Plugins Overview
+description: Explore AuthScape's rich ecosystem of 30+ plugins for payments, email, content management, and more.
+---
+
+# Plugins Overview
+
+AuthScape includes a comprehensive plugin ecosystem with over 30 modules covering payments, communication, content management, analytics, and more.
+
+## Available Plugins
+
+### Payments & Billing
+
+| Plugin | Description |
+|--------|-------------|
+| [Stripe](/docs/plugins/stripe) | Payment processing with subscriptions, Connect, and webhooks |
+| [Invoice](/docs/plugins/invoice) | Invoice creation, line items, and payment tracking |
+| [Plaid](/docs/plugins/plaid) | Bank account verification and financial data |
+
+### Communication
+
+| Plugin | Description |
+|--------|-------------|
+| [SendGrid](/docs/plugins/sendgrid) | Transactional emails with templates |
+| [Tickets](/docs/plugins/tickets) | Customer support ticket system |
+
+### Content & Data
+
+| Plugin | Description |
+|--------|-------------|
+| [Content Management](/docs/plugins/content-management) | Full CMS with page builder |
+| [Document Processing](/docs/plugins/document-processing) | Azure Form Recognizer integration |
+| [Lucene Search](/docs/plugins/lucene-search) | Full-text search indexing |
+| [Spreadsheet](/docs/plugins/spreadsheet) | Spreadsheet processing with Azure Vision |
+
+### Organization
+
+| Plugin | Description |
+|--------|-------------|
+| [Kanban](/docs/plugins/kanban) | Kanban boards with columns and cards |
+| [User Management](/docs/plugins/user-management) | User administration and roles |
+| [Reporting](/docs/plugins/reporting) | Dynamic report generation |
+
+### E-Commerce
+
+| Plugin | Description |
+|--------|-------------|
+| [Marketplace](/docs/plugins/marketplace) | Product search, filtering, analytics |
+
+### Analytics & Tracking
+
+| Plugin | Description |
+|--------|-------------|
+| [Analytics](/docs/plugins/analytics) | Event tracking, page views, conversions |
+
+### Infrastructure
+
+| Plugin | Description |
+|--------|-------------|
+| [Azure Cloud](/docs/plugins/azure-cloud) | Azure service integrations |
+| [Private Label](/docs/plugins/private-label) | White-labeling and multi-tenant branding |
+| [Node Service](/docs/plugins/node-service) | Workflow/flow builder |
+
+### AI & Integrations
+
+| Plugin | Description |
+|--------|-------------|
+| [OpenAI](/docs/plugins/openai) | ChatGPT and OpenAI API integration |
+| [MCP](/docs/plugins/mcp) | Model Context Protocol support |
+
+## Using Plugins
+
+Most plugins are automatically available when you include the relevant project references. To use a plugin:
+
+### 1. Add Project Reference
+
+```xml
+<ProjectReference Include="..\Plugins\AuthScape.Stripe\AuthScape.StripePayment.csproj" />
+```
+
+### 2. Configure in appsettings.json
+
+```json
+{
+  "AppSettings": {
+    "Stripe": {
+      "PublishableKey": "pk_test_...",
+      "SecretKey": "sk_test_..."
+    }
+  }
+}
+```
+
+### 3. Register Services
+
+Most plugins register automatically. Some may require explicit registration:
+
+```csharp
+services.AddStripePayments(Configuration);
+```
+
+### 4. Use in Controllers
+
+```csharp
+public class PaymentController : ControllerBase
+{
+    private readonly IStripeService _stripeService;
+
+    public PaymentController(IStripeService stripeService)
+    {
+        _stripeService = stripeService;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreatePaymentIntent(decimal amount)
+    {
+        var intent = await _stripeService.CreatePaymentIntent(amount);
+        return Ok(intent);
+    }
+}
+```
+
+## Plugin Architecture
+
+Each plugin follows a consistent pattern:
+
+```
+Plugins/
+├── AuthScape.Stripe/
+│   ├── Controllers/
+│   │   └── PaymentController.cs
+│   ├── Services/
+│   │   └── StripeService.cs
+│   ├── Models/
+│   └── AuthScape.StripePayment.csproj
+```
+
+## Next Steps
+
+Explore individual plugin documentation:
+
+- [Stripe Payments](/docs/plugins/stripe)
+- [SendGrid Email](/docs/plugins/sendgrid)
+- [Content Management](/docs/plugins/content-management)
+- [Analytics](/docs/plugins/analytics)
