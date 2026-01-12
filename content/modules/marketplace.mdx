@@ -2,9 +2,6 @@
 title: Marketplace
 description: Product marketplace component with search, filtering, and analytics.
 ---
-
-# Marketplace
-
 A ready-to-use marketplace component with Lucene.Net search, faceted filtering, and analytics tracking.
 
 ## Installation
@@ -117,41 +114,6 @@ export default function MyMarketplacePage() {
 - **Responsive design** - Works on desktop and mobile
 - **Pagination** - Built-in pagination support
 
-## Database Setup
-
-The marketplace uses two database tables that are automatically created:
-
-### ProductCardCategory
-
-Defines filterable categories:
-
-```sql
-CREATE TABLE ProductCardCategory (
-    Id BIGINT PRIMARY KEY IDENTITY,
-    CompanyId BIGINT NULL,
-    DisplayName NVARCHAR(255),
-    PropertyName NVARCHAR(255),
-    Created DATETIMEOFFSET
-)
-```
-
-### AnalyticsMarketplaceImpressionsClicks
-
-Tracks user interactions:
-
-```sql
-CREATE TABLE AnalyticsMarketplaceImpressionsClicks (
-    Id BIGINT PRIMARY KEY IDENTITY,
-    CompanyId BIGINT NULL,
-    LocationId BIGINT NULL,
-    ProductCardId BIGINT,
-    IsImpression BIT,
-    IsClick BIT,
-    DateTime DATETIMEOFFSET,
-    UserId BIGINT NULL
-)
-```
-
 ## Customizing Products
 
 Mark your product model properties with `[MarketplaceIndex]` to make them searchable:
@@ -222,13 +184,12 @@ export default function MarketplacePage() {
 
 ### Filters not showing
 
-- Verify `ProductCardCategory` entries exist in database
 - Ensure `PropertyName` matches product model properties
 - Check `showFilters` prop is set to `true`
+- Verify filter categories are configured
 
 ### Analytics not tracking
 
-- Verify `AnalyticsMarketplaceImpressionsClicks` table exists
 - Check database connection is working
 - Ensure user is authenticated if tracking user interactions
 

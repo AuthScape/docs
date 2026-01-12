@@ -3,11 +3,121 @@ title: Environment Variables
 description: Configure AuthScape using environment variables.
 ---
 
-# Environment Variables
-
 Environment variables provide a secure way to configure AuthScape, especially in containerized and cloud environments.
 
-## Setting Environment Variables
+## Quick Setup Script
+
+We provide an interactive script to help configure environment variables. **Important**: Download and review the script before running.
+
+### Windows (PowerShell)
+
+**Step 1: Download the script**
+
+```powershell
+Invoke-WebRequest -Uri "https://docs.authscape.com/scripts/setup-env.ps1" -OutFile "setup-env.ps1"
+```
+
+**Step 2: Review and edit (optional)**
+
+Open `setup-env.ps1` in your text editor to review what it does. You can also pre-fill values by editing the script directly instead of entering them interactively.
+
+```powershell
+# Open in Notepad
+notepad setup-env.ps1
+
+# Or open in VS Code
+code setup-env.ps1
+```
+
+**Step 3: Run the script**
+
+```powershell
+.\setup-env.ps1
+```
+
+The script will interactively prompt you for:
+- Database connection details
+- API and client URLs
+- Stripe keys (optional)
+- SendGrid email configuration (optional)
+- Azure Blob Storage (optional)
+- Lucene search / Marketplace (optional)
+- AI services (optional)
+
+Press ENTER to skip any field you don't want to configure.
+
+### Linux/Mac (Bash)
+
+**Step 1: Download the script**
+
+```bash
+curl -O https://docs.authscape.com/scripts/setup-env.sh
+```
+
+**Step 2: Review and edit (optional)**
+
+Open `setup-env.sh` in your text editor to review what it does. You can also pre-fill values by editing the script.
+
+```bash
+# Open in nano
+nano setup-env.sh
+
+# Or open in vim
+vim setup-env.sh
+
+# Or open in VS Code
+code setup-env.sh
+```
+
+**Step 3: Make executable and run**
+
+```bash
+chmod +x setup-env.sh
+./setup-env.sh
+```
+
+**Step 4: Apply changes**
+
+```bash
+source ~/.bashrc  # or ~/.zshrc depending on your shell
+```
+
+## Cleanup Script
+
+To remove all AuthScape environment variables:
+
+### Windows (PowerShell)
+
+```powershell
+# Download cleanup script
+Invoke-WebRequest -Uri "https://docs.authscape.com/scripts/cleanup-env.ps1" -OutFile "cleanup-env.ps1"
+
+# Review it (optional)
+notepad cleanup-env.ps1
+
+# Run it
+.\cleanup-env.ps1
+```
+
+### Linux/Mac (Bash)
+
+```bash
+# Download cleanup script
+curl -O https://docs.authscape.com/scripts/cleanup-env.sh
+
+# Review it (optional)
+cat cleanup-env.sh
+
+# Make executable and run
+chmod +x cleanup-env.sh
+./cleanup-env.sh
+```
+
+## Manual Setup
+
+If you prefer to set variables manually:
+
+### Setting Environment Variables
 
 ### Windows
 
