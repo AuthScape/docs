@@ -1,0 +1,490 @@
+---
+title: Marketplace
+description: Full-featured marketplace module with Lucene.Net search, faceted filtering, and analytics tracking.
+---
+
+# Marketplace
+
+The Marketplace module provides a complete product marketplace system with advanced search capabilities powered by Lucene.Net, faceted filtering, and impression/click analytics tracking.
+
+## Features
+
+- Full-text search with Lucene.Net
+- Fuzzy search support
+- Independent faceting (multi-select filters within categories)
+- Azure Blob Storage for search indexes
+- Impression and click tracking
+- Real-time analytics
+- Customizable product categories
+- Dynamic filter options
+
+## Architecture
+
+The marketplace uses Lucene.Net 4.8.0 with Azure Blob Storage as the storage backend, providing scalable and reliable search indexing.
+
+```
+┌─────────────────┐
+│  Product Data   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐       ┌──────────────────┐
+│ Lucene Indexer  │──────►│  Azure Blob      │
+└─────────────────┘       │  Storage         │
+                          └──────────────────┘
+                                   │
+                                   ▼
+                          ┌──────────────────┐
+                          │  Search Engine   │
+                          └─────────┬────────┘
+                                    │
+                                    ▼
+                          ┌──────────────────┐
+                          │  Analytics DB    │
+                          └──────────────────┘
+```
+
+## Azure Configuration
+
+### Step 1: Create Azure Storage Account
+
+1. Log in to the [Azure Portal](https://portal.azure.com)
+2. Navigate to **Storage Accounts**
+3. Click **Create**
+4. Fill in the basic information:
+   - **Resource Group**: Select or create a new one
+   - **Storage Account Name**: Choose a unique name (e.g., `authscapemarketplace`)
+   - **Region**: Choose your preferred region
+   - **Performance**: Standard (recommended)
+   - **Redundancy**: LRS (Locally Redundant Storage) or higher
+5. Click **Review + Create** then **Create**
+
+### Step 2: Create Blob Container
+
+1. Once the storage account is created, navigate to it
+2. In the left menu, click **Containers** under **Data storage**
+3. Click **+ Container**
+4. Enter the container name: `lucene-indexes`
+5. Set **Public access level**: Private (default)
+6. Click **Create**
+
+### Step 3: Get Connection String
+
+1. In the storage account, navigate to **Access keys** under **Security + networking**
+2. Copy the **Connection string** from **key1** or **key2**
+3. It will look like:
+   ```
+   DefaultEndpointsProtocol=https;AccountName=youraccountname;AccountKey=youraccountkey;EndpointSuffix=core.windows.net
+   ```
+
+## Configuration
+
+### appsettings.json
+
+Add the following configuration to your `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "LuceneSearch": {
+      "StorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=youraccountname;AccountKey=yourkey;EndpointSuffix=core.windows.net",
+      "Container": "lucene-indexes"
+    }
+  }
+}
+```
+
+### Environment Variables (Alternative)
+
+You can also use environment variables instead of appsettings.json:
+
+```bash
+AppSettings__LuceneSearch__StorageConnectionString=DefaultEndpointsProtocol=https;...
+AppSettings__LuceneSearch__Container=lucene-indexes
+```
+
+## Database Models
+
+### ProductCardCategory
+
+Defines filterable categories for products:
+
+```csharp
+public class ProductCardCategory
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long? CompanyId { get; set; }
+    public string DisplayName { get; set; }
+    public string PropertyName { get; set; }
+    public DateTimeOffset Created { get; set; }
+
+    public Company Company { get; set; }
+}
+```
+
+- **DisplayName**: User-friendly label shown in UI (e.g., "Brand", "Category")
+- **PropertyName**: Property name on your product model to filter by (e.g., "brand", "category")
+- **CompanyId**: Optional - for multi-tenant filtering
+
+### AnalyticsMarketplaceImpressionsClicks
+
+Tracks user interactions with marketplace items:
+
+```csharp
+public class AnalyticsMarketplaceImpressionsClicks
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long? CompanyId { get; set; }
+    public long? LocationId { get; set; }
+    public long ProductCardId { get; set; }
+    public bool IsImpression { get; set; }
+    public bool IsClick { get; set; }
+    public DateTimeOffset DateTime { get; set; }
+    public long? UserId { get; set; }
+
+    public AppUser User { get; set; }
+    public Company Company { get; set; }
+    public Location Location { get; set; }
+}
+```
+
+## Product Model Example
+
+Decorate your product model properties with `[MarketplaceIndex]` attribute:
+
+```csharp
+using AuthScape.Marketplace.Attributes;
+
+public class MyProduct
+{
+    public long Id { get; set; }
+
+    [MarketplaceIndex]
+    public string Name { get; set; }
+
+    [MarketplaceIndex]
+    public string Description { get; set; }
+
+    [MarketplaceIndex]
+    public string Category { get; set; }
+
+    [MarketplaceIndex]
+    public string Brand { get; set; }
+
+    [MarketplaceIndex]
+    public decimal Price { get; set; }
+
+    [MarketplaceIndex]
+    public List<string> Tags { get; set; }
+
+    public DateTime Created { get; set; }
+}
+```
+
+The `[MarketplaceIndex]` attribute marks properties that should be included in the Lucene search index.
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/marketplace/Search` | POST | Search products with filters |
+| `/api/marketplace/Clicked` | POST | Track product click |
+| `/api/marketplace/GetFilterOptions` | GET | Get available filter categories |
+| `/api/marketplace/Analytics` | GET | Get impressions and clicks analytics |
+
+## Usage
+
+### Search Products
+
+```javascript
+import { apiService } from 'authscape';
+
+const results = await apiService().post('/api/marketplace/Search', {
+  searchTerm: 'laptop',
+  facets: {
+    brand: ['Dell', 'HP'],
+    category: ['Electronics']
+  },
+  pageSize: 20,
+  pageNumber: 1
+});
+
+// Response:
+// {
+//   results: [...],
+//   totalResults: 45,
+//   facets: {
+//     brand: { Dell: 12, HP: 8, Lenovo: 5 },
+//     category: { Electronics: 45, Computers: 40 }
+//   }
+// }
+```
+
+### Track Product Click
+
+```javascript
+await apiService().post('/api/marketplace/Clicked', {
+  productCardId: 123,
+  userId: 456
+});
+```
+
+### Get Filter Options
+
+```javascript
+const filterOptions = await apiService().get('/api/marketplace/GetFilterOptions');
+
+// Response:
+// [
+//   { id: 1, displayName: 'Brand', propertyName: 'brand' },
+//   { id: 2, displayName: 'Category', propertyName: 'category' },
+//   { id: 3, displayName: 'Price Range', propertyName: 'priceRange' }
+// ]
+```
+
+### Get Analytics
+
+```javascript
+const analytics = await apiService().get('/api/marketplace/Analytics?startDate=2025-01-01&endDate=2025-01-31');
+
+// Response:
+// [
+//   { productCardId: 123, productName: 'Laptop XYZ', impressions: 150, clicks: 25 },
+//   { productCardId: 124, productName: 'Keyboard ABC', impressions: 89, clicks: 12 }
+// ]
+```
+
+## React Marketplace Component
+
+```jsx
+import { useState, useEffect } from 'react';
+import { apiService } from 'authscape';
+import {
+  TextField,
+  Checkbox,
+  FormGroup,
+  FormControlLabel,
+  Grid,
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  Chip
+} from '@mui/material';
+
+export default function Marketplace() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState([]);
+  const [filters, setFilters] = useState({});
+  const [selectedFilters, setSelectedFilters] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadFilterOptions();
+  }, []);
+
+  useEffect(() => {
+    search();
+  }, [searchTerm, selectedFilters]);
+
+  async function loadFilterOptions() {
+    const options = await apiService().get('/api/marketplace/GetFilterOptions');
+    const filterObj = {};
+    options.forEach(opt => {
+      filterObj[opt.propertyName] = [];
+    });
+    setFilters(filterObj);
+  }
+
+  async function search() {
+    setLoading(true);
+    try {
+      const response = await apiService().post('/api/marketplace/Search', {
+        searchTerm,
+        facets: selectedFilters,
+        pageSize: 50,
+        pageNumber: 1
+      });
+      setResults(response.results || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleFilter(category, value) {
+    setSelectedFilters(prev => {
+      const newFilters = { ...prev };
+      if (!newFilters[category]) {
+        newFilters[category] = [];
+      }
+
+      if (newFilters[category].includes(value)) {
+        newFilters[category] = newFilters[category].filter(v => v !== value);
+      } else {
+        newFilters[category] = [...newFilters[category], value];
+      }
+
+      return newFilters;
+    });
+  }
+
+  async function handleProductClick(productId) {
+    await apiService().post('/api/marketplace/Clicked', {
+      productCardId: productId
+    });
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <TextField
+        fullWidth
+        placeholder="Search products..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        sx={{ mb: 3 }}
+      />
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={3}>
+          {/* Filters */}
+          {Object.keys(filters).map(category => (
+            <Box key={category} sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                {category}
+              </Typography>
+              <FormGroup>
+                {/* Render filter checkboxes dynamically based on search results */}
+              </FormGroup>
+            </Box>
+          ))}
+        </Grid>
+
+        <Grid item xs={12} md={9}>
+          {/* Results */}
+          {loading ? (
+            <Typography>Loading...</Typography>
+          ) : (
+            <Grid container spacing={2}>
+              {results.map(product => (
+                <Grid item xs={12} sm={6} md={4} key={product.id}>
+                  <Card
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => handleProductClick(product.id)}
+                  >
+                    <CardContent>
+                      <Typography variant="h6">{product.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {product.description}
+                      </Typography>
+                      <Box sx={{ mt: 1 }}>
+                        {product.tags?.map(tag => (
+                          <Chip key={tag} label={tag} size="small" sx={{ mr: 0.5 }} />
+                        ))}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+```
+
+## Search Index Generation
+
+The marketplace service automatically generates Lucene search indexes from your product data. To trigger index generation:
+
+```csharp
+public class MarketplaceService : IMarketplaceService
+{
+    public async Task<bool> GenerateIndexes<T>(List<T> items, string indexName)
+        where T : class
+    {
+        // Generates Lucene index from items with [MarketplaceIndex] attributes
+        // Stores index in Azure Blob Storage
+        // Returns true on success
+    }
+}
+```
+
+## Independent Faceting
+
+The marketplace supports independent faceting, which means:
+- Users can select multiple values within a single category
+- Selecting filters in one category doesn't hide options in other categories
+- Provides a more flexible search experience
+
+Example: User selects "Dell" and "HP" as brand filters, while also selecting "Laptops" and "Desktops" as category filters. All combinations will be searched independently.
+
+## Fuzzy Search
+
+The Lucene.Net implementation includes fuzzy search support:
+- Handles typos and misspellings
+- Uses edit distance algorithm
+- Configurable similarity threshold
+
+Search for "laptp" will still return results for "laptop".
+
+## Performance Considerations
+
+- **Index Updates**: Rebuild indexes when product data changes significantly
+- **Azure Region**: Choose Azure region closest to your application servers
+- **Index Size**: Monitor blob storage usage and index size
+- **Query Caching**: Consider implementing query result caching for popular searches
+
+## Troubleshooting
+
+### Common Issues
+
+#### Search returns no results
+
+1. Verify Azure Storage connection string is correct
+2. Check that the blob container exists and is named correctly
+3. Ensure indexes have been generated from your product data
+4. Verify products have `[MarketplaceIndex]` attributes on searchable properties
+
+#### Filters not appearing
+
+1. Check that `ProductCardCategory` entries exist in the database
+2. Verify `PropertyName` matches the actual property names on your product model
+3. Ensure filter options endpoint is being called successfully
+
+#### Analytics not tracking
+
+1. Verify `AnalyticsMarketplaceImpressionsClicks` table exists in database
+2. Check that click tracking endpoint is being called from frontend
+3. Ensure `CompanyId` and `UserId` are properly set if using multi-tenant setup
+
+## Dependencies
+
+- **Lucene.Net**: 4.8.0
+- **Lucene.Net.Store.Azure**: For Azure Blob Storage
+- **Azure Storage Blobs SDK**: Latest version
+- **Entity Framework Core**: For database models
+
+## Security
+
+- Connection strings should be stored in **Azure Key Vault** or secure configuration
+- Never commit connection strings to source control
+- Use Azure Managed Identities when possible
+- Restrict blob container access to private only
+
+## Next Steps
+
+1. Set up Azure Storage Account and container
+2. Configure connection string in appsettings.json
+3. Define your product model with `[MarketplaceIndex]` attributes
+4. Create filter categories in `ProductCardCategory` table
+5. Generate initial search indexes
+6. Implement search UI with React component example
+7. Monitor analytics to optimize product listings
