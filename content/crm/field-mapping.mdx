@@ -1,0 +1,274 @@
+---
+title: Field Mapping
+description: Configure how fields map between AuthScape and your CRM system
+---
+
+# Field Mapping
+
+Field mapping defines how data is translated between AuthScape user fields and CRM entity fields. Proper mapping ensures data consistency across both systems.
+
+## Accessing Field Mappings
+
+1. Go to **User Management** > **CRM Integration**
+2. Click on your CRM connection
+3. Select an entity mapping (e.g., User → Contact)
+4. Click **Field Mappings**
+
+## Default Mappings
+
+When you create an entity mapping, these default field mappings are created:
+
+| AuthScape Field | Dynamics 365 | Salesforce | HubSpot |
+|-----------------|--------------|------------|---------|
+| FirstName | firstname | FirstName | firstname |
+| LastName | lastname | LastName | lastname |
+| Email | emailaddress1 | Email | email |
+| PhoneNumber | telephone1 | Phone | phone |
+| IsActive | statecode | IsDeleted (inverted) | - |
+
+## Creating Custom Mappings
+
+### Step 1: Add Field Mapping
+
+1. In the Field Mappings screen, click **Add Mapping**
+2. Select the **AuthScape Field** from the dropdown
+3. Enter the **CRM Field Name** (API name, not display name)
+4. Choose the **Sync Direction**
+5. Click **Save**
+
+### Sync Direction Options
+
+| Direction | Description |
+|-----------|-------------|
+| Bidirectional | Changes sync both ways (default) |
+| Outbound Only | Only push AuthScape changes to CRM |
+| Inbound Only | Only pull CRM changes to AuthScape |
+
+## Data Type Handling
+
+### String Fields
+
+String fields map directly. Maximum lengths are enforced by the CRM.
+
+### Boolean Fields
+
+Boolean values map to CRM-specific representations:
+
+**Dynamics 365 State Codes:**
+```
+AuthScape true  → Dynamics 0 (Active)
+AuthScape false → Dynamics 1 (Inactive)
+```
+
+**Dynamics 365 Two-Option Fields:**
+```
+AuthScape true  → Dynamics true
+AuthScape false → Dynamics false
+```
+
+### Date Fields
+
+Dates are converted to ISO 8601 format for CRM APIs:
+
+```
+AuthScape: 2024-01-15T10:30:00Z
+Dynamics:  2024-01-15T10:30:00Z
+```
+
+## Custom Fields
+
+### AuthScape Custom Fields
+
+To map AuthScape custom fields:
+
+1. First, create the custom field in **User Management** > **Custom Fields**
+2. In field mapping, select the custom field from the dropdown
+3. Map it to the corresponding CRM field
+
+### CRM Custom Fields
+
+For Dynamics 365 custom fields:
+
+1. Use the schema name (e.g., `new_customfield`)
+2. Prefix varies by publisher (e.g., `new_`, `cr123_`)
+3. Find schema names in **Dynamics** > **Settings** > **Customizations**
+
+## Transformation Rules
+
+Some mappings require data transformation:
+
+### State Code Mapping (Dynamics 365)
+
+The `statecode` field in Dynamics is automatically transformed:
+
+```javascript
+// Outbound (AuthScape → Dynamics)
+isActive: true  → statecode: 0
+isActive: false → statecode: 1
+
+// Inbound (Dynamics → AuthScape)
+statecode: 0 → isActive: true
+statecode: 1 → isActive: false
+```
+
+### Option Set Mapping
+
+For Dynamics Option Set fields, map to the numeric value:
+
+```
+"Bronze"   → 1
+"Silver"   → 2
+"Gold"     → 3
+"Platinum" → 4
+```
+
+## Relationship Mappings (Lookup Fields)
+
+Relationship mappings allow you to link AuthScape entities (like Company or Location) to CRM lookup fields. This enables automatic association of records across systems.
+
+### When to Use Relationship Mappings
+
+Use relationship mappings when you need to:
+- Link Users to their Company/Account in CRM
+- Link Users to their Location/Branch in CRM
+- Link Locations to their parent Company/Account in CRM
+
+### Accessing Relationship Mappings
+
+1. Go to **User Management** > **CRM Integration**
+2. Click on your CRM connection
+3. Select an entity mapping (e.g., User → Contact)
+4. Click **Field Mappings** (icon with lines)
+5. Click the **Relationships** button in the header
+
+### Creating a Relationship Mapping
+
+1. Click **Add Relationship**
+2. Select the **AuthScape Relationship Field**:
+   - `CompanyId` - Links to Company entity
+   - `LocationId` - Links to Location entity
+3. Select the **CRM Lookup Field** (e.g., `parentcustomerid` for Dynamics Contact)
+4. Enter the **CRM Related Entity Name** (e.g., `account`)
+5. Choose the **Sync Direction**
+6. Click **Create**
+
+### Common Relationship Mappings
+
+#### User → Contact with Company → Account
+
+| Setting | Value |
+|---------|-------|
+| AuthScape Field | CompanyId |
+| Related Entity | Company |
+| CRM Lookup Field | parentcustomerid |
+| CRM Related Entity | account |
+
+This mapping ensures that when a User is synced to a Contact, their `parentcustomerid` lookup field is automatically set to the corresponding Account.
+
+#### User → Contact with Location → Account
+
+| Setting | Value |
+|---------|-------|
+| AuthScape Field | LocationId |
+| Related Entity | Location |
+| CRM Lookup Field | new_locationid |
+| CRM Related Entity | account |
+
+Use this if you have a custom lookup field for Location/Branch.
+
+### How Relationship Resolution Works
+
+**Outbound Sync (AuthScape → CRM):**
+1. System reads the User's `CompanyId` (e.g., `5`)
+2. Looks up the CRM external ID for Company `5`
+3. Sets the Contact's `parentcustomerid` to that Account GUID
+
+**Inbound Sync (CRM → AuthScape):**
+1. System reads the Contact's `parentcustomerid` (Account GUID)
+2. Looks up the AuthScape entity linked to that Account
+3. Sets the User's `CompanyId` to that Company ID
+
+### Prerequisites
+
+For relationship mappings to work:
+1. The related entity (Company/Location) must be synced first
+2. An external ID mapping must exist between the AuthScape entity and CRM entity
+3. Both entity mappings must be configured (e.g., Company → Account AND User → Contact)
+
+### Sync Null Values
+
+The **Sync Null Values** option determines what happens when the relationship is empty:
+- **Enabled**: Clears the CRM lookup if AuthScape field is null
+- **Disabled**: Preserves existing CRM lookup value
+
+## Excluding Fields from Sync
+
+To prevent a field from syncing:
+
+1. Find the field mapping
+2. Click the **Delete** icon
+3. Confirm removal
+
+Or set the sync direction to match your needs (Outbound Only if you only want to push, Inbound Only if you only want to pull).
+
+## Conflict Resolution
+
+When the same record is modified in both systems simultaneously:
+
+| Conflict Type | Resolution |
+|---------------|------------|
+| Same field changed | Last write wins (most recent timestamp) |
+| Different fields | Both changes applied |
+| Delete vs Update | Delete takes precedence |
+
+## Validation Rules
+
+Field mappings validate data before sync:
+
+- **Required fields**: Sync fails if required CRM fields are empty
+- **Max length**: Strings are truncated to CRM field limits
+- **Format**: Email fields validated for proper format
+- **Unique fields**: Duplicates in CRM are detected and logged
+
+## Troubleshooting
+
+### Field Not Syncing
+
+1. Verify the mapping exists for the field
+2. Check the sync direction allows the desired flow
+3. Ensure the CRM field name is the API/schema name
+4. Check for validation errors in sync logs
+
+### Wrong Data Type
+
+Ensure AuthScape and CRM field types are compatible:
+
+| AuthScape Type | Compatible CRM Types |
+|----------------|---------------------|
+| string | Single Line Text, Multiple Lines |
+| bool | Two Options, Status |
+| int | Whole Number |
+| decimal | Decimal Number, Currency |
+| DateTime | Date Only, Date and Time |
+
+### Null Value Handling
+
+By default:
+- Null values in AuthScape clear the CRM field
+- Empty strings are treated as null
+
+To preserve existing CRM values when AuthScape field is null, uncheck **Sync Null Values** in the mapping settings.
+
+## Best Practices
+
+1. **Start with default mappings** - Only add custom mappings as needed
+2. **Use schema names** - Always use API/schema names, not display names
+3. **Test in sandbox** - Validate mappings in a test environment first
+4. **Document custom mappings** - Keep track of non-standard mappings
+5. **Monitor sync logs** - Regularly review for mapping errors
+
+## Next Steps
+
+- [Set up real-time webhooks](/docs/crm/webhooks)
+- Review [Dynamics 365 setup](/docs/crm/dynamics365)
+- Return to [CRM Overview](/docs/crm/overview)

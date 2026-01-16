@@ -3,6 +3,7 @@ import Link from 'next/link';
 import CodeBlock from './CodeBlock';
 import CodePlayground from './CodePlayground';
 import Callout from './Callout';
+import FlowTemplateGenerator from './FlowTemplateGenerator';
 
 // Custom components for MDX
 const MDXComponents = {
@@ -174,6 +175,7 @@ const MDXComponents = {
   // Custom components
   CodePlayground,
   Callout,
+  FlowTemplateGenerator,
 };
 
 export default MDXComponents;
