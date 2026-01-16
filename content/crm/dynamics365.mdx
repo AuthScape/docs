@@ -1,0 +1,164 @@
+---
+title: Microsoft Dynamics 365 Integration
+description: Connect AuthScape to Microsoft Dynamics 365 for bidirectional contact sync
+---
+
+# Microsoft Dynamics 365 Integration
+
+This guide covers setting up bidirectional synchronization between AuthScape and Microsoft Dynamics 365 CRM.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- An Azure Active Directory tenant
+- A Dynamics 365 environment with the Web API enabled
+- Admin access to register an application in Azure AD
+
+## Azure AD App Registration
+
+### Step 1: Create the App Registration
+
+1. Go to the [Azure Portal](https://portal.azure.com)
+2. Navigate to **Azure Active Directory** > **App registrations**
+3. Click **New registration**
+4. Enter a name (e.g., "AuthScape CRM Integration")
+5. Set **Supported account types** to "Accounts in this organizational directory only"
+6. Click **Register**
+
+### Step 2: Configure API Permissions
+
+1. In your app registration, go to **API permissions**
+2. Click **Add a permission**
+3. Select **Dynamics CRM**
+4. Choose **Delegated permissions** and check **user_impersonation**
+5. Click **Add permissions**
+6. Click **Grant admin consent for [your tenant]**
+
+### Step 3: Create Client Secret
+
+1. Go to **Certificates & secrets**
+2. Click **New client secret**
+3. Enter a description and choose an expiration period
+4. Click **Add**
+5. **Copy the secret value immediately** (it won't be shown again)
+
+### Step 4: Note Your Credentials
+
+You'll need these values for AuthScape configuration:
+
+- **Application (client) ID**: Found on the Overview page
+- **Directory (tenant) ID**: Found on the Overview page
+- **Client Secret**: The value you copied in Step 3
+- **Dynamics Environment URL**: e.g., `yourorg.crm.dynamics.com`
+
+## AuthScape Configuration
+
+Add the Dynamics 365 credentials to your `appsettings.json`:
+
+```json
+{
+  "CRM": {
+    "Dynamics365": {
+      "ClientId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "ClientSecret": "your-client-secret-value",
+      "TenantId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "Environment": "yourorg.crm.dynamics.com"
+    }
+  }
+}
+```
+
+<Callout type="warning">
+  Never commit secrets to source control. Use User Secrets, Azure Key Vault, or environment variables for production deployments.
+</Callout>
+
+## Creating a Connection
+
+1. In AuthScape, navigate to **User Management** > **CRM Integration**
+2. Click **Add Connection**
+3. Select **Dynamics 365** as the provider
+4. Enter a name for the connection (e.g., "Production Dynamics")
+5. Enter your Dynamics environment URL
+6. Click **Create**
+
+The connection will use the credentials from your `appsettings.json`.
+
+## Entity Mapping
+
+After creating a connection, configure which entities to sync:
+
+1. Click on your connection to open it
+2. Click **Add Entity Mapping**
+3. For user synchronization, use:
+   - **AuthScape Entity**: User
+   - **CRM Entity**: contact (or account for company sync)
+4. Click **Save**
+
+## Field Mapping
+
+Configure how fields map between systems:
+
+| AuthScape Field | Dynamics Field | Direction |
+|-----------------|----------------|-----------|
+| FirstName | firstname | Bidirectional |
+| LastName | lastname | Bidirectional |
+| Email | emailaddress1 | Bidirectional |
+| PhoneNumber | telephone1 | Bidirectional |
+| IsActive | statecode | Bidirectional |
+
+### State Code Mapping
+
+Dynamics uses numeric state codes:
+
+- `0` = Active (maps to `IsActive = true`)
+- `1` = Inactive (maps to `IsActive = false`)
+
+## Manual Sync Operations
+
+### Full Sync
+
+To perform a full synchronization of all records:
+
+1. Go to **User Management** > **CRM Integration**
+2. Click on your connection
+3. Click **Sync Now** > **Full Sync**
+
+### Sync Individual User
+
+To sync a specific user:
+
+1. Go to **User Management** > **Users**
+2. Find the user and click to edit
+3. Click **Sync to CRM** in the actions menu
+
+## Troubleshooting
+
+### Authentication Errors
+
+If you see "Invalid client credentials" errors:
+
+1. Verify the Client ID and Tenant ID are correct
+2. Check that the client secret hasn't expired
+3. Ensure the app has been granted admin consent
+
+### Permission Errors
+
+If you see "Access denied" errors:
+
+1. Verify the app has the `user_impersonation` permission
+2. Check that admin consent has been granted
+3. Ensure the app user has sufficient privileges in Dynamics
+
+### Connection Timeout
+
+If sync operations time out:
+
+1. Check your network connectivity to Dynamics
+2. Verify the environment URL is correct (should be just the domain, not a full URL)
+3. Consider breaking large syncs into smaller batches
+
+## Next Steps
+
+- [Set up real-time webhooks](/docs/crm/webhooks) for instant synchronization
+- [Configure field mappings](/docs/crm/field-mapping) for custom fields

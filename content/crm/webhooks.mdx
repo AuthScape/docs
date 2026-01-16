@@ -1,0 +1,230 @@
+---
+title: Real-time Webhooks
+description: Configure Power Automate to sync Dynamics 365 changes to AuthScape in real-time
+---
+
+# Real-time Webhooks with Power Automate
+
+This guide shows you how to set up a Power Automate flow that automatically sends Dynamics 365 contact changes to AuthScape in real-time.
+
+## What You'll Need
+
+- Access to [Power Automate](https://make.powerautomate.com)
+- Your AuthScape domain URL
+- Your CRM connection ID (found in User Management > CRM Integration)
+
+## Option 1: Create Flow Manually (Recommended)
+
+This is the recommended approach as it doesn't rely on legacy import features.
+
+### Step 1: Create a New Flow
+
+1. Go to [Power Automate](https://make.powerautomate.com)
+2. Click **+ Create** in the left sidebar
+3. Select **Automated cloud flow**
+4. Name it "Sync Contacts to AuthScape"
+5. Search for **"When a row is added, modified or deleted"** (Microsoft Dataverse)
+6. Select it and click **Create**
+
+### Step 2: Configure the Trigger
+
+Configure the Dataverse trigger with these settings:
+
+| Setting | Value |
+|---------|-------|
+| Change type | Added or Modified |
+| Table name | Contacts |
+| Scope | Organization |
+| Select columns | `firstname,lastname,emailaddress1,telephone1,statecode` |
+
+### Step 3: Add HTTP Action
+
+1. Click **+ New step**
+2. Search for **HTTP** and select the **HTTP** action (not HTTP + Swagger)
+3. Configure it with these settings:
+
+| Setting | Value |
+|---------|-------|
+| Method | POST |
+| URI | `https://YOUR-DOMAIN/api/crm/webhook/dynamics/YOUR-CONNECTION-ID` |
+
+Replace `YOUR-DOMAIN` and `YOUR-CONNECTION-ID` with your actual values.
+
+4. Click **Show advanced options**
+5. Add a header:
+   - **Key**: `Content-Type`
+   - **Value**: `application/json`
+
+### Step 4: Configure the Body
+
+In the **Body** field, build the JSON by typing the structure and inserting Dynamic content for the field values.
+
+1. Click in the **Body** field
+2. Paste this JSON structure:
+
+```json
+{
+  "MessageName": "Update",
+  "PrimaryEntityName": "contact",
+  "PrimaryEntityId": "",
+  "InputParameters": [
+    {
+      "key": "Target",
+      "value": {
+        "firstname": "",
+        "lastname": "",
+        "emailaddress1": "",
+        "telephone1": "",
+        "statecode": ""
+      }
+    }
+  ]
+}
+```
+
+3. Now replace each empty `""` value with Dynamic content:
+   - Click inside the quotes after `"PrimaryEntityId": ""`
+   - Click **Dynamic content** (lightning bolt icon)
+   - Search for **Contact** and select it (this is the contactid/GUID)
+   - Repeat for each field:
+
+| JSON Field | Dynamic Content to Select |
+|------------|---------------------------|
+| PrimaryEntityId | Contact (the GUID) |
+| firstname | First Name |
+| lastname | Last Name |
+| emailaddress1 | Email |
+| telephone1 | Business Phone |
+| statecode | Status |
+
+After adding dynamic content, each value will show as a colored tag like `First Name` instead of empty quotes.
+
+**MessageName Options:**
+
+The `MessageName` field tells AuthScape what type of change occurred. Supported values:
+
+| MessageName | Description |
+|-------------|-------------|
+| `Create` or `Created` | A new record was created |
+| `Update`, `Updated`, `Modify`, or `Modified` | An existing record was changed |
+| `Delete` or `Deleted` | A record was deleted |
+
+For the "Added or Modified" trigger, use `"Update"` - AuthScape handles both creates and updates the same way (it syncs the record data).
+
+### Step 5: Save and Test
+
+1. Click **Save**
+2. The flow should automatically turn on
+3. Go to Dynamics 365 and modify a contact to test
+
+---
+
+## Option 2: Import Template
+
+If you prefer to import a pre-configured template, use the generator below.
+
+### Step 1: Generate Your Template
+
+<FlowTemplateGenerator />
+
+### Step 2: Import into Power Automate
+
+1. Go to [Power Automate](https://make.powerautomate.com)
+2. Click **My flows** in the left sidebar
+3. Click **Import** > **Import Package (Legacy)**
+4. Click **Upload** and select the JSON file you downloaded
+5. Wait for the upload to complete
+
+### Step 3: Configure the Connection
+
+1. Under **Related resources**, find **shared_commondataserviceforapps**
+2. Click **Select during import**
+3. Choose your existing Dataverse connection, or click **Create new**
+4. Click **Save**
+
+### Step 4: Complete the Import
+
+1. Click **Import**
+2. Wait for the "Successfully imported" message
+3. Click **Open flow** to view your new flow
+4. Click **Save** and ensure the flow is turned **On**
+
+---
+
+## Finding Your Connection ID
+
+1. Go to your AuthScape admin portal
+2. Navigate to **User Management** > **CRM Integration**
+3. Find the **Connection ID** column in the table
+4. Click the ID chip to copy it to your clipboard
+
+You can also click the **Edit** button on any connection to see the Connection ID displayed prominently at the top of the dialog.
+
+## Testing the Flow
+
+1. Go to Dynamics 365
+2. Open any contact and make a change (e.g., update the phone number)
+3. Save the contact
+4. Go back to Power Automate
+5. Click **Run history** on your flow
+6. You should see a successful run
+
+## What Fields Are Synced
+
+The template syncs these fields when they change:
+
+| Field | Description |
+|-------|-------------|
+| firstname | Contact's first name |
+| lastname | Contact's last name |
+| emailaddress1 | Primary email address |
+| telephone1 | Primary phone number |
+| statecode | Active/Inactive status |
+
+## Adding More Fields
+
+To sync additional fields:
+
+1. Edit the flow in Power Automate
+2. Click on the trigger **When a row is added, modified or deleted**
+3. In **Select columns**, add more field names separated by commas
+4. Click on the **HTTP** action
+5. In the **Body**, add the new fields to the `value` object using Dynamic content
+
+## Troubleshooting
+
+### Flow Not Triggering
+
+- Ensure the flow is turned **On**
+- Verify you're modifying one of the fields listed in "Select columns"
+- Check that the Dataverse connection is valid
+
+### HTTP 404 Error
+
+- Verify the webhook URL is correct
+- Confirm the connection ID exists in AuthScape
+
+### HTTP 400 Error
+
+- Check the JSON body format
+- Ensure all dynamic content references are valid
+
+### Flow Runs But User Not Updated
+
+- Verify field mappings are configured in AuthScape
+- Check that the contact exists in AuthScape (or auto-create is enabled)
+- Review sync logs in AuthScape CRM Integration
+
+## Run History
+
+To view past flow runs:
+
+1. Open your flow in Power Automate
+2. Click **Run history** (or the clock icon)
+3. Click on any run to see details
+4. Expand actions to see inputs and outputs
+
+## Next Steps
+
+- [Configure field mappings](/docs/crm/field-mapping) in AuthScape
+- Review [Dynamics 365 setup](/docs/crm/dynamics365)

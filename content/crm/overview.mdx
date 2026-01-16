@@ -1,0 +1,73 @@
+---
+title: CRM Integration Overview
+description: Bidirectional sync between AuthScape and external CRM systems
+---
+
+# CRM Integration
+
+AuthScape provides built-in support for bidirectional synchronization with popular CRM systems. This allows you to keep your user data in sync between AuthScape and external CRM platforms.
+
+## Supported CRM Providers
+
+- **Microsoft Dynamics 365** - Full support for contacts and accounts
+- **Salesforce** - Coming soon
+- **HubSpot** - Coming soon
+- **Google Contacts** - Coming soon
+
+## Features
+
+### Bidirectional Sync
+
+Changes made in either system are automatically synchronized:
+
+- **Outbound Sync**: When users are created or updated in AuthScape, changes are pushed to your CRM
+- **Inbound Sync**: When contacts are modified in your CRM, changes are pulled into AuthScape
+
+### Field Mapping
+
+Configure which AuthScape user fields map to which CRM fields. The system supports:
+
+- Standard fields (name, email, phone)
+- Custom fields defined in your CRM
+- Transformation rules for data conversion
+
+### Real-time Updates
+
+Set up webhooks to receive instant notifications when CRM records change, enabling real-time synchronization without polling.
+
+## Getting Started
+
+1. Navigate to **User Management > CRM Integration** in the admin portal
+2. Click **Add Connection** to configure your CRM provider
+3. Set up entity mappings (e.g., User → Contact)
+4. Configure field mappings for each entity
+5. Enable the connection to start syncing
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   AuthScape     │────▶│  CRM Sync       │────▶│   CRM System    │
+│   Users         │◀────│  Service        │◀────│   (Dynamics,    │
+│                 │     │                 │     │   Salesforce)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+## Configuration
+
+CRM credentials are configured in your `appsettings.json`:
+
+```json
+{
+  "CRM": {
+    "Dynamics365": {
+      "ClientId": "your-client-id",
+      "ClientSecret": "your-client-secret",
+      "TenantId": "your-tenant-id",
+      "Environment": "your-org.crm.dynamics.com"
+    }
+  }
+}
+```
+
+See the provider-specific documentation for detailed setup instructions.
